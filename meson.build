@@ -871,11 +871,13 @@ if get_option('kvm').allowed() and host_os == 'linux'
   accelerators += 'CONFIG_KVM'
 endif
 if get_option('whpx').allowed() and host_os == 'windows'
-  if get_option('whpx').enabled() and host_machine.cpu() != 'x86_64'
-    error('WHPX requires 64-bit host')
+  if get_option('whpx').enabled() and host_machine.cpu() != 'x86_64' and host_machine.cpu() != 'aarch64'
+    error('WHPX requires x86_64 or aarch64 host')
   elif cc.has_header('winhvplatform.h', required: get_option('whpx')) and \
        cc.has_header('winhvemulation.h', required: get_option('whpx'))
     accelerators += 'CONFIG_WHPX'
+  else
+    error('WHPX headers not found')
   endif
 endif
 
