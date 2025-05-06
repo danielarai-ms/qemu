@@ -12,6 +12,7 @@
 #include "cpu.h"
 #include "qemu/accel.h"
 #include "qemu/error-report.h"
+#include "hw/boards.h"
 
 #include "whpx-internal.h"
 
@@ -22,6 +23,8 @@
 static bool whpx_allowed;
 static bool whp_dispatch_initialized;
 static HMODULE hWinHvPlatform, hWinHvEmulation;
+
+struct whpx_state whpx_global;
 
 struct WHPDispatch whp_dispatch;
 
@@ -109,15 +112,70 @@ error:
     return false;
 }
 
+/* Partially copied from i386. */
 static int whpx_accel_init(MachineState *ms)
 {
-    int ret = -ENOSYS;
+    struct whpx_state *whpx;
+    int ret;
+    HRESULT hr;
+    WHV_CAPABILITY whpx_cap;
+    UINT32 whpx_cap_size;
+    WHV_PARTITION_PROPERTY prop;
+
+    whpx = &whpx_global;
 
     if (!init_whp_dispatch()) {
         ret = -ENOSYS;
         printf("Failed to initialize whp dispatch\n");
         goto error;
     }
+
+    hr = whp_dispatch.WHvGetCapability(
+        WHvCapabilityCodeHypervisorPresent, &whpx_cap,
+        sizeof(whpx_cap), &whpx_cap_size);
+    if (FAILED(hr) || !whpx_cap.HypervisorPresent) {
+        error_report("WHPX: No accelerator found, hr=%08lx", hr);
+        ret = -ENOSPC;
+        goto error;
+    }
+
+    hr = whp_dispatch.WHvCreatePartition(&whpx->partition);
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to create partition, hr=%08lx", hr);
+        ret = -EINVAL;
+        goto error;
+    }
+
+    /*
+     * TODO: query any required or optional partition capabilities that
+     * are relevant to acceleration.
+     */
+
+    memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
+    prop.ProcessorCount = ms->smp.cpus;
+    hr = whp_dispatch.WHvSetPartitionProperty(
+        whpx->partition,
+        WHvPartitionPropertyCodeProcessorCount,
+        &prop,
+        sizeof(WHV_PARTITION_PROPERTY));
+
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to set partition processor count to %u,"
+                     " hr=%08lx", prop.ProcessorCount, hr);
+        ret = -EINVAL;
+        goto error;
+    }
+
+    /* TODO: If necessary, register any required extended VM exits. */
+
+    hr = whp_dispatch.WHvSetupPartition(whpx->partition);
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to set up partition, hr=%08lx", hr);
+        ret = -EINVAL;
+        goto error;
+    }
+
+    /* TODO: whpx_memory_init() */
 
     printf("Windows Hypervisor Platform accelerator is initialized (but not working)\n");
     return 0;

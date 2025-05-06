@@ -5,7 +5,15 @@
 
 #include <windows.h>
 #include <winhvplatform.h>
-#include <winhvemulation.h>
+
+/* Partially copied from i386. */
+struct whpx_state {
+    uint64_t mem_quota;
+    WHV_PARTITION_HANDLE partition;
+    int32_t running_cpus;
+};
+
+extern struct whpx_state whpx_global;
 
 /* Copied from i386 */
 typedef enum WHPFunctionList {
