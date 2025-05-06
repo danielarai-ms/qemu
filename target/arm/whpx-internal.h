@@ -10,10 +10,7 @@
 /* Copied from i386 */
 typedef enum WHPFunctionList {
     WINHV_PLATFORM_FNS_DEFAULT,
-#if 0
-    /* XXX Not available right now */
-    WINHV_EMULATION_FNS_DEFAULT,
-#endif
+    /*WINHV_EMULATION_FNS_DEFAULT,*/
     WINHV_PLATFORM_FNS_SUPPLEMENTAL
 } WHPFunctionList;
 
@@ -50,16 +47,6 @@ typedef enum WHPFunctionList {
         (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, PVOID State, \
          UINT32 StateSize)) \
 
-// XXX not present on ARM
-#if 0
-#define LIST_WINHVEMULATION_FUNCTIONS(X) \
-  X(HRESULT, WHvEmulatorCreateEmulator, (const WHV_EMULATOR_CALLBACKS* Callbacks, WHV_EMULATOR_HANDLE* Emulator)) \
-  X(HRESULT, WHvEmulatorDestroyEmulator, (WHV_EMULATOR_HANDLE Emulator)) \
-  X(HRESULT, WHvEmulatorTryIoEmulation, (WHV_EMULATOR_HANDLE Emulator, VOID* Context, const WHV_VP_EXIT_CONTEXT* VpContext, const WHV_X64_IO_PORT_ACCESS_CONTEXT* IoInstructionContext, WHV_EMULATOR_STATUS* EmulatorReturnStatus)) \
-  X(HRESULT, WHvEmulatorTryMmioEmulation, (WHV_EMULATOR_HANDLE Emulator, VOID* Context, const WHV_VP_EXIT_CONTEXT* VpContext, const WHV_MEMORY_ACCESS_CONTEXT* MmioInstructionContext, WHV_EMULATOR_STATUS* EmulatorReturnStatus)) \
-
-#endif
-
 #define WHP_DEFINE_TYPE(return_type, function_name, signature) \
     typedef return_type (WINAPI *function_name ## _t) signature;
 
@@ -68,14 +55,10 @@ typedef enum WHPFunctionList {
 
 /* Define function typedef */
 LIST_WINHVPLATFORM_FUNCTIONS(WHP_DEFINE_TYPE)
-// XXX not present on ARM
-//LIST_WINHVEMULATION_FUNCTIONS(WHP_DEFINE_TYPE)
 LIST_WINHVPLATFORM_FUNCTIONS_SUPPLEMENTAL(WHP_DEFINE_TYPE)
 
 struct WHPDispatch {
     LIST_WINHVPLATFORM_FUNCTIONS(WHP_DECLARE_MEMBER)
-    // XXX not present on ARM
-    //LIST_WINHVEMULATION_FUNCTIONS(WHP_DECLARE_MEMBER)
     LIST_WINHVPLATFORM_FUNCTIONS_SUPPLEMENTAL(WHP_DECLARE_MEMBER)
 };
 
