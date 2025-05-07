@@ -168,6 +168,31 @@ static int whpx_accel_init(MachineState *ms)
 
     /* TODO: If necessary, register any required extended VM exits. */
 
+    /*
+     * Initialize the interrupt controller.
+     * TODO: Use the requested interrupt controller properties instead
+     * of hard-coded ones.
+     */
+    memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
+    prop.Arm64IcParameters.EmulationMode = WHvArm64IcEmulationModeGicV3;
+    prop.Arm64IcParameters.GicV3Parameters.GicdBaseAddress = 0xffff0000;
+    prop.Arm64IcParameters.GicV3Parameters.GitsTranslaterBaseAddress = 0xeff68000;
+    prop.Arm64IcParameters.GicV3Parameters.GicLpiIntIdBits = 1;
+    prop.Arm64IcParameters.GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
+    prop.Arm64IcParameters.GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
+    hr = whp_dispatch.WHvSetPartitionProperty(
+        whpx->partition,
+        WHvPartitionPropertyCodeArm64IcParameters,
+        &prop,
+        sizeof(WHV_PARTITION_PROPERTY));
+
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to set interrupt controller properties,"
+                     " hr=%08lx", hr);
+        ret = -EINVAL;
+        goto error;
+    }
+
     hr = whp_dispatch.WHvSetupPartition(whpx->partition);
     if (FAILED(hr)) {
         error_report("WHPX: Failed to set up partition, hr=%08lx", hr);
