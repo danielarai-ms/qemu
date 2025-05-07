@@ -80,7 +80,9 @@ static void whpx_kick_vcpu_thread(CPUState *cpu)
 
 static bool whpx_vcpu_thread_is_idle(CPUState *cpu)
 {
-    return !whpx_apic_in_platform();
+    /* TODO: Implement this function */
+    assert(false);
+    return false;
 }
 
 static void whpx_accel_ops_class_init(ObjectClass *oc, const void *data)

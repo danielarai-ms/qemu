@@ -11,6 +11,7 @@ struct whpx_state {
     uint64_t mem_quota;
     WHV_PARTITION_HANDLE partition;
     int32_t running_cpus;
+    bool step_pending;
 };
 
 extern struct whpx_state whpx_global;

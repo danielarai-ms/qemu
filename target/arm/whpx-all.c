@@ -16,9 +16,26 @@
 #include "hw/boards.h"
 
 #include "whpx-internal.h"
+#include "whpx-accel-ops.h"
 
 // XXX do not merge
 #include <stdio.h>
+
+/* Partially copied from i386 */
+struct AccelCPUState {
+    bool window_registered;
+    bool interruptable;
+    /*
+    bool ready_for_pic_interrupt;
+    uint64_t tpr;
+    uint64_t apic_base;
+    bool interruption_pending;
+    */
+    bool dirty;
+
+    /* Must be the last field as it may have a tail */
+    /*WHV_RUN_VP_EXIT_CONTEXT exit_ctx;*/
+};
 
 /* All of these copied from i386. */
 static bool whpx_allowed;
@@ -30,6 +47,107 @@ struct whpx_state whpx_global;
 struct WHPDispatch whp_dispatch;
 
 /* TODO: Refactor to share code with i386 if possible. */
+static void whpx_set_registers(CPUState *cpu, int level)
+{
+    /* TODO: Implement this function */
+    assert(false);
+}
+
+static void whpx_get_registers(CPUState *cpu)
+{
+    /* TODO: Implement this function */
+    assert(false);
+}
+
+static void do_whpx_cpu_synchronize_state(CPUState *cpu, run_on_cpu_data arg)
+{
+    if (!cpu->accel->dirty) {
+        whpx_get_registers(cpu);
+        cpu->accel->dirty = true;
+    }
+}
+
+static void do_whpx_cpu_synchronize_post_reset(CPUState *cpu,
+                                               run_on_cpu_data arg)
+{
+    whpx_set_registers(cpu, WHPX_SET_RESET_STATE);
+    cpu->accel->dirty = false;
+}
+
+static void do_whpx_cpu_synchronize_post_init(CPUState *cpu,
+                                              run_on_cpu_data arg)
+{
+    whpx_set_registers(cpu, WHPX_SET_FULL_STATE);
+    cpu->accel->dirty = false;
+}
+
+static void do_whpx_cpu_synchronize_pre_loadvm(CPUState *cpu,
+                                               run_on_cpu_data arg)
+{
+    cpu->accel->dirty = true;
+}
+
+/*
+ * CPU support.
+ */
+
+void whpx_cpu_synchronize_state(CPUState *cpu)
+{
+    if (!cpu->accel->dirty) {
+        run_on_cpu(cpu, do_whpx_cpu_synchronize_state, RUN_ON_CPU_NULL);
+    }
+}
+
+void whpx_cpu_synchronize_post_reset(CPUState *cpu)
+{
+    run_on_cpu(cpu, do_whpx_cpu_synchronize_post_reset, RUN_ON_CPU_NULL);
+}
+
+void whpx_cpu_synchronize_post_init(CPUState *cpu)
+{
+    run_on_cpu(cpu, do_whpx_cpu_synchronize_post_init, RUN_ON_CPU_NULL);
+}
+
+void whpx_cpu_synchronize_pre_loadvm(CPUState *cpu)
+{
+    run_on_cpu(cpu, do_whpx_cpu_synchronize_pre_loadvm, RUN_ON_CPU_NULL);
+}
+
+void whpx_cpu_synchronize_pre_resume(bool step_pending)
+{
+    whpx_global.step_pending = step_pending;
+}
+
+/*
+ * Vcpu support.
+ */
+
+int whpx_init_vcpu(CPUState *cpu)
+{
+    /* TODO: Implement this function */
+    assert(false);
+    return 0;
+}
+
+int whpx_vcpu_exec(CPUState *cpu)
+{
+    /* TODO: Implement this function */
+    assert(false);
+    return 0;
+}
+
+void whpx_destroy_vcpu(CPUState *cpu)
+{
+    /* TODO: Implement this function */
+    assert(false);
+}
+
+void whpx_vcpu_kick(CPUState *cpu)
+{
+    /* TODO: Implement this function */
+    assert(false);
+}
+
 /*
  * Memory support.
  */
