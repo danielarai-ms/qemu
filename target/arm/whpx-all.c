@@ -121,6 +121,7 @@ static int whpx_accel_init(MachineState *ms)
     WHV_CAPABILITY whpx_cap;
     UINT32 whpx_cap_size;
     WHV_PARTITION_PROPERTY prop;
+    WHV_ARM64_IC_PARAMETERS *ic_param;
 
     whpx = &whpx_global;
 
@@ -174,12 +175,13 @@ static int whpx_accel_init(MachineState *ms)
      * of hard-coded ones.
      */
     memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
-    prop.Arm64IcParameters.EmulationMode = WHvArm64IcEmulationModeGicV3;
-    prop.Arm64IcParameters.GicV3Parameters.GicdBaseAddress = 0xffff0000;
-    prop.Arm64IcParameters.GicV3Parameters.GitsTranslaterBaseAddress = 0xeff68000;
-    prop.Arm64IcParameters.GicV3Parameters.GicLpiIntIdBits = 1;
-    prop.Arm64IcParameters.GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
-    prop.Arm64IcParameters.GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
+    ic_param = &prop.Arm64IcParameters;
+    ic_param->EmulationMode = WHvArm64IcEmulationModeGicV3;
+    ic_param->GicV3Parameters.GicdBaseAddress = 0xffff0000;
+    ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0xeff68000;
+    ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
+    ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
+    ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
     hr = whp_dispatch.WHvSetPartitionProperty(
         whpx->partition,
         WHvPartitionPropertyCodeArm64IcParameters,
