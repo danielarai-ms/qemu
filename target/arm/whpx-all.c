@@ -15,6 +15,7 @@
 #include "system/whpx.h"
 #include "qemu/error-report.h"
 #include "hw/boards.h"
+#include "whpx-arm.h"
 
 #include "whpx-internal.h"
 #include "whpx-accel-ops.h"
@@ -46,6 +47,11 @@ static HMODULE hWinHvPlatform, hWinHvEmulation;
 struct whpx_state whpx_global;
 
 struct WHPDispatch whp_dispatch;
+
+void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
+{
+    /* TODO: Implement this function */
+}
 
 /* TODO: Refactor to share code with i386 if possible. */
 static void whpx_set_registers(CPUState *cpu, int level)
