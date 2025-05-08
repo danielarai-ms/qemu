@@ -456,6 +456,11 @@ error:
     return ret;
 }
 
+int whpx_enabled(void)
+{
+    return whpx_allowed;
+}
+
 static void whpx_accel_class_init(ObjectClass *oc, const void *data)
 {
     AccelClass *ac = ACCEL_CLASS(oc);

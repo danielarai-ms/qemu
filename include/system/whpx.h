@@ -19,7 +19,6 @@
 
 #ifdef CONFIG_WHPX
 
-/* TODO: This function is probably only relevant on i386. */
 int whpx_enabled(void);
 bool whpx_apic_in_platform(void);
 
