@@ -12,6 +12,7 @@
 #include "cpu.h"
 #include "system/address-spaces.h"
 #include "qemu/accel.h"
+#include "system/whpx.h"
 #include "qemu/error-report.h"
 #include "hw/boards.h"
 
