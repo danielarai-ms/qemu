@@ -51,6 +51,56 @@ struct WHPDispatch whp_dispatch;
 void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
 {
     /* TODO: Implement this function */
+    /* TODO: look at kvm code in kvm_arm_get_host_cpu_features */
+    /* WHV_ARM64_PROCESSOR_FEATURES/FEATURES1/WHV_PROCESSOR_FEATURES_BANKS
+     * exposes some ARM CPU features.
+     *
+     * This is exposed via WHV_CAPABILITY/WHV_CAPABILITY_CODE, which is in
+     * turn exposed through WhvGetCapability.
+     *
+     * winhvplatformdefs.h/winhvplatform.h
+     */
+    WHV_CAPABILITY capability = {};
+    uint32_t capability_size;
+    HRESULT hr;
+    uint64_t features = 0;
+    CPUARMState *env = &cpu->env;
+
+    hr = whp_dispatch.WHvGetCapability(WHvCapabilityCodeProcessorFeaturesBanks,
+                                       &capability, sizeof(WHV_CAPABILITY),
+                                       &capability_size);
+
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to read processor capabilities, hr=%08lx",
+                     hr);
+        return;
+    }
+
+    if (capability.ProcessorFeaturesBanks.Bank0.PmuV3) {
+        features |= 1ULL << ARM_FEATURE_PMU;
+    }
+
+    /* TODO: These are what KVM sets. Are they appropriate for WHPX? */
+    features |= 1ULL << ARM_FEATURE_V8;
+    features |= 1ULL << ARM_FEATURE_NEON;
+    features |= 1ULL << ARM_FEATURE_AARCH64;
+    features |= 1ULL << ARM_FEATURE_GENERIC_TIMER;
+
+    /*
+     * TODO: Hard-coding support for generic V8. Support actual target if
+     * we're running on it?
+     */
+    env->features = features;
+    cpu->dtb_compatible = "arm,arm-v8";
+    /* TODO: Unclear if this will work with a non-KVM accelerator, or if we
+     * have to pretend to have some different target.
+     */
+    cpu->kvm_target = QEMU_KVM_ARM_TARGET_NONE;
+
+    /* TODO: ARMISARegisters, which are available from
+     * GetVirtualProcessorRegisters, possibly after creating a dummy VP
+     * like KVM does.
+     */
 }
 
 /* TODO: Refactor to share code with i386 if possible. */
