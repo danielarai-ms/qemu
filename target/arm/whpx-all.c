@@ -48,6 +48,92 @@ struct whpx_state whpx_global;
 
 struct WHPDispatch whp_dispatch;
 
+/*
+ * The WHP names of the ID registers. These can all be read in a single call
+ * to the appropriate WHP API.
+ */
+static WHV_REGISTER_NAME whpx_isar_register_names[] = {
+    WHvRegisterHypervisorVersion,
+    WHvRegisterPrivilegesAndFeaturesInfo,
+    WHvRegisterFeaturesInfo,
+    WHvRegisterImplementationLimitsInfo,
+    WHvRegisterHardwareFeaturesInfo,
+    WHvArm64RegisterIdIsar0El1,
+    WHvArm64RegisterIdIsar1El1,
+    WHvArm64RegisterIdIsar2El1,
+    WHvArm64RegisterIdIsar3El1,
+    WHvArm64RegisterIdIsar4El1,
+    WHvArm64RegisterIdIsar5El1,
+
+    WHvArm64RegisterIdAa64Mmfr0El1,
+    WHvArm64RegisterIdAa64Mmfr1El1,
+    WHvArm64RegisterIdAa64Mmfr2El1,
+    WHvArm64RegisterIdAa64Mmfr3El1,
+    WHvArm64RegisterIdAa64Mmfr4El1,
+
+    WHvArm64RegisterIdPfr0El1,
+    WHvArm64RegisterIdPfr1El1,
+
+    WHvArm64RegisterIdMvfr0El1,
+    WHvArm64RegisterIdMvfr1El1,
+    WHvArm64RegisterIdMvfr2El1,
+
+    WHvArm64RegisterIdAa64Dfr0El1,
+    WHvArm64RegisterIdAa64Dfr1El1,
+
+    WHvArm64RegisterIdAa64Isar0El1,
+    WHvArm64RegisterIdAa64Isar1El1,
+    WHvArm64RegisterIdAa64Isar2El1,
+
+
+    /* TODO: dbgdidr, dbgdevid, dbgdevid1 */
+
+    WHvArm64RegisterIdAa64Pfr0El1,
+    WHvArm64RegisterIdAa64Pfr1El1,
+
+    WHvArm64RegisterIdAa64Mmfr0El1,
+    WHvArm64RegisterIdAa64Mmfr1El1,
+    WHvArm64RegisterIdAa64Mmfr2El1,
+    WHvArm64RegisterIdAa64Mmfr3El1,
+    WHvArm64RegisterIdAa64Mmfr4El1,
+
+    WHvArm64RegisterIdAa64Dfr0El1,
+    WHvArm64RegisterIdAa64Dfr1El1,
+
+    WHvArm64RegisterIdAa64Zfr0El1,
+    WHvArm64RegisterIdAa64Smfr0El1,
+
+    /* TODO: WHvArm64RegisterPmcrEl0,*/
+};
+
+static bool whpx_arm_get_cpu_features_from_host(void)
+{
+    struct whpx_state *whpx = &whpx_global;
+    HRESULT hr;
+    /* TODO: Is there an existing macro to get this size? */
+    uint32_t register_count = sizeof(whpx_isar_register_names) / sizeof(WHV_REGISTER_NAME);
+    WHV_REGISTER_VALUE isar_values[sizeof(whpx_isar_register_names) / sizeof(WHV_REGISTER_NAME)];
+
+    /* TODO: what's the indentation style? */
+    hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
+        whpx->partition, WHV_ANY_VP, whpx_isar_register_names, register_count,
+        isar_values);
+
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to read ISAR register values, hr=%08lx", hr);
+        return false;
+    }
+
+    /* TODO: Just for debugging to see if we got something reasonable. */
+    int i;
+    for (i = 0; i < register_count; i++) {
+        printf("ISAR register %d: %08llx\n", i, isar_values[i].Reg64);
+    }
+
+    /* TODO: Need to convert the array of WHV_REGISTER_VALUES into the QEMU struct values. */
+    return true;
+}
+
 void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
 {
     /* TODO: Implement this function */
@@ -101,6 +187,15 @@ void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
      * GetVirtualProcessorRegisters, possibly after creating a dummy VP
      * like KVM does.
      */
+    /* TODO: We're not doing anything with the ISAR values read from the host yet. */
+    if (!whpx_arm_get_cpu_features_from_host()) {
+        error_report("WHPX: Unable to read host CPU features");
+
+        /* WE can't report this error yet, so flag that we need to in
+         * arm_cpu_realizefn().
+         */
+        cpu->host_cpu_probe_failed = true;
+    }
 }
 
 /* TODO: Refactor to share code with i386 if possible. */
