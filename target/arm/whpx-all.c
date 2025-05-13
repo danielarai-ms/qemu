@@ -438,8 +438,78 @@ static void whpx_set_registers(CPUState *cpu, int level)
 
 static void whpx_get_registers(CPUState *cpu)
 {
-    /* TODO: Implement this function */
-    assert(false);
+    struct whpx_state *whpx = &whpx_global;
+    ARMCPU *arm_cpu = ARM_CPU(cpu);
+    CPUARMState *env = &arm_cpu->env;
+    struct whpx_register_set vcxt;
+    HRESULT hr;
+    int idx;
+    int fp_reg_nr;
+
+    assert(cpu_is_stopped(cpu) || qemu_cpu_is_self(cpu));
+
+    /* TODO: Is there an equivalent of the TSC? */
+
+    hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
+        whpx->partition, cpu->cpu_index,
+        whpx_register_names,
+        RTL_NUMBER_OF(whpx_register_names),
+        &vcxt.values[0]);
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to get virtual processor context, hr=%08lx",
+                     hr);
+    }
+
+    /* The X registers are the first 32 registers in the WHPX array.
+     * This includes the frame pointer, link register, and non-banked
+     * stack pointer
+     */
+    for (idx = 0; idx < CPU_NB_REGS64; idx++) {
+        env->xregs[idx] = vcxt.values[idx].Reg64;
+    }
+
+    /* Program counter */
+    env->pc = vcxt.values[idx++].Reg64;
+
+
+    /* TODO: PSTATE may not be correct. */
+    env->pstate = vcxt.values[idx++].Reg32;
+
+    /* TODO: uncached_cpsr */
+    env->spsr = vcxt.values[idx++].Reg32;
+
+    /* TODO: banked_spsr */
+    /* TODO: banked_r13 */
+    /* TODO: banked_r14 */
+    /* TODO: usr_regs */
+    /* TODO: fiq_regs */
+
+    /* TODO: Other exception link registers */
+    env->elr_el[1] = vcxt.values[idx++].Reg64;
+
+    /* TODO: Other banked stack pointers */
+    env->sp_el[0] = vcxt.values[idx++].Reg64;
+    env->sp_el[1] = vcxt.values[idx++].Reg64;
+
+    /* The 32 floating point registers are arranged in the same relative
+     * order in QEMU and WHP.
+     *
+     * TODO: What's the appropriate type to use here? x86-64 has
+     * WHV_X64_FP_REGISTER but there doesn't seem to be an equivalent type
+     * for aarch64.
+     */
+    for (fp_reg_nr = 0; fp_reg_nr < 32; fp_reg_nr++) {
+        *aa64_vfp_qreg(env, fp_reg_nr) = vcxt.values[idx++].Reg64;
+    }
+
+    env->vfp.fpsr = vcxt.values[idx++].Reg64;
+    env->vfp.fpcr = vcxt.values[idx++].Reg64;
+
+    /* TODO: fp_status */
+    /* TODO: zcr */
+    /* TODO: smcr */
+
+    assert(idx == RTL_NUMBER_OF(whpx_register_names));
 }
 
 static void do_whpx_cpu_synchronize_state(CPUState *cpu, run_on_cpu_data arg)
