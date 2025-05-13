@@ -14,8 +14,10 @@
 #include "qemu/accel.h"
 #include "system/whpx.h"
 #include "qemu/error-report.h"
+#include "qapi/error.h"
 #include "hw/boards.h"
 #include "whpx-arm.h"
+#include "migration/blocker.h"
 
 #include "whpx-internal.h"
 #include "whpx-accel-ops.h"
@@ -42,10 +44,10 @@ struct AccelCPUState {
 /* All of these copied from i386. */
 static bool whpx_allowed;
 static bool whp_dispatch_initialized;
-static HMODULE hWinHvPlatform, hWinHvEmulation;
+static HMODULE hWinHvPlatform;
+static uint32_t max_vcpu_index;
 
 struct whpx_state whpx_global;
-
 struct WHPDispatch whp_dispatch;
 
 /*
@@ -329,12 +331,57 @@ void whpx_cpu_synchronize_pre_resume(bool step_pending)
 /*
  * Vcpu support.
  */
+static Error *whpx_migration_blocker;
 
+/* Partially derived from i386 */
 int whpx_init_vcpu(CPUState *cpu)
 {
-    /* TODO: Implement this function */
-    assert(false);
+    HRESULT hr;
+    struct whpx_state *whpx = &whpx_global;
+    AccelCPUState *vcpu = NULL;
+    Error *local_error = NULL;
+    int ret;
+
+    /* Add migration blockers for all unsupported features of the
+     * Windows Hypervisor Platform. TODO: WHP on ARM may have additional
+     * missing features that are not listed here.
+     */
+    if (whpx_migration_blocker == NULL) {
+        error_setg(&whpx_migration_blocker,
+               "State blocked due to dirty memory tracking support");
+
+        if (migrate_add_blocker(&whpx_migration_blocker, &local_error) < 0) {
+            error_report_err(local_error);
+            ret = -EINVAL;
+            goto error;
+        }
+    }
+
+    vcpu = g_new0(AccelCPUState, 1);
+
+    hr = whp_dispatch.WHvCreateVirtualProcessor(
+        whpx->partition, cpu->cpu_index, 0 /* flags, must be zero */);
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to create a virtual processor,"
+                     " hr=%08lx", hr);
+        ret = -EINVAL;
+        goto error;
+    }
+
+    /* TODO: is there an equivalent of tsc_khz? */
+    /* TODO: is there an equivalent of apic_bus_freq? */
+
+    vcpu->interruptable = true;
+    vcpu->dirty = true;
+    cpu->accel = vcpu;
+    max_vcpu_index = max(max_vcpu_index, cpu->cpu_index);
+
     return 0;
+
+error:
+    g_free(vcpu);
+
+    return ret;
 }
 
 int whpx_vcpu_exec(CPUState *cpu)
@@ -556,10 +603,6 @@ static bool init_whp_dispatch(void)
 error:
     if (hWinHvPlatform) {
         FreeLibrary(hWinHvPlatform);
-    }
-
-    if (hWinHvEmulation) {
-        FreeLibrary(hWinHvEmulation);
     }
 
     return false;
