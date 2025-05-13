@@ -397,10 +397,12 @@ void whpx_destroy_vcpu(CPUState *cpu)
     assert(false);
 }
 
+/* Identical to i386 */
 void whpx_vcpu_kick(CPUState *cpu)
 {
-    /* TODO: Implement this function */
-    assert(false);
+    struct whpx_state *whpx = &whpx_global;
+    whp_dispatch.WHvCancelRunVirtualProcessor(
+        whpx->partition, cpu->cpu_index, 0);
 }
 
 /*
