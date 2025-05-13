@@ -652,6 +652,8 @@ static int whpx_vcpu_run(CPUState *cpu)
 
         /* TODO: Single step handling */
 
+        /* TODO: Interrupt injection */
+
         hr = whp_dispatch.WHvRunVirtualProcessor(
             whpx->partition, cpu->cpu_index,
             &vcpu->exit_ctx, sizeof(vcpu->exit_ctx));
