@@ -160,6 +160,9 @@ static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
     isar->id_aa64isar2 = (cur_isar_value++)->Reg64;
 
     isar->id_aa64pfr0 = (cur_isar_value++)->Reg64;
+    /* TODO: Implement VSE support. For now, hide it. */
+    isar->id_aa64pfr0 &= ~(0x0000000f00000000ll);
+
     isar->id_aa64pfr1 = (cur_isar_value++)->Reg64;
 
     isar->id_aa64mmfr0 = (cur_isar_value++)->Reg64;
@@ -177,6 +180,12 @@ static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
      * accessed off the end of the array.
      */
     assert(cur_isar_value - isar_values == register_count);
+
+#define XSTR(s) str(s)
+#define STR(s) #s
+
+#define DUMP_ID(reg) printf("%16s: %016llx\n", STR(reg), (uint64_t)isar->reg)
+    DUMP_ID(id_aa64pfr0);
 
     return true;
 }

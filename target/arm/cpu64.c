@@ -61,6 +61,9 @@ void arm_cpu_sve_finalize(ARMCPU *cpu, Error **errp)
     uint32_t vq_mask = 0;
     uint32_t tmp, vq, max_vq = 0;
 
+    // XXX debugging
+    printf("vq_init %d\n", vq_init);
+
     /*
      * CPU models specify a set of supported vector lengths which are
      * enabled by default.  Attempting to enable any vector length not set
