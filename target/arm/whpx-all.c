@@ -13,6 +13,7 @@
 #include "system/address-spaces.h"
 #include "qemu/accel.h"
 #include "system/whpx.h"
+#include "system/runstate.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "hw/boards.h"
@@ -140,7 +141,7 @@ struct AccelCPUState {
     bool dirty;
 
     /* Must be the last field as it may have a tail */
-    /*WHV_RUN_VP_EXIT_CONTEXT exit_ctx;*/
+    WHV_RUN_VP_EXIT_CONTEXT exit_ctx;
 };
 
 /* All of these copied from i386. */
@@ -626,11 +627,96 @@ error:
     return ret;
 }
 
+static int whpx_vcpu_run(CPUState *cpu)
+{
+    struct whpx_state *whpx = &whpx_global;
+    HRESULT hr;
+    AccelCPUState *vcpu = cpu->accel;
+    int ret;
+
+    g_assert(bql_locked());
+
+    /* TODO: Breakpoint handling */
+
+    bql_unlock();
+
+    /* TODO: WHPX step mode (more breakpoint handling) */
+
+    cpu_exec_start(cpu);
+
+    do {
+        if (cpu->accel->dirty) {
+            whpx_set_registers(cpu, WHPX_SET_RUNTIME_STATE);
+            cpu->accel->dirty = false;
+        }
+
+        /* TODO: Single step handling */
+
+        hr = whp_dispatch.WHvRunVirtualProcessor(
+            whpx->partition, cpu->cpu_index,
+            &vcpu->exit_ctx, sizeof(vcpu->exit_ctx));
+
+        if (FAILED(hr)) {
+            error_report("WHPX: Failed to exec a virtual processor,"
+                         " hr=%08lx", hr);
+            ret = -1;
+            break;
+        }
+
+        /* TODO: Is there any post-run work required? */
+
+        switch (vcpu->exit_ctx.ExitReason) {
+        case WHvRunVpExitReasonNone:
+        case WHvRunVpExitReasonUnrecoverableException:
+        case WHvRunVpExitReasonInvalidVpRegisterValue:
+        case WHvRunVpExitReasonUnsupportedFeature:
+        default:
+            error_report("WHPX: Unexpected VP exit code %d",
+                         vcpu->exit_ctx.ExitReason);
+            whpx_get_registers(cpu);
+            bql_lock();
+            qemu_system_guest_panicked(cpu_get_crash_info(cpu));
+            bql_unlock();
+            ret = -1;
+            break;
+        }
+
+    } while (!ret);
+
+    /* TODO: Additional breakpoint handling */
+    cpu_exec_end(cpu);
+
+    bql_lock();
+    current_cpu = cpu;
+    /*
+     * TODO: Handle last VCPU stopping by removing any previously set
+     * breakpoints.
+     */
+    qatomic_set(&cpu->exit_request, false);
+    return ret < 0;
+}
+
 int whpx_vcpu_exec(CPUState *cpu)
 {
-    /* TODO: Implement this function */
-    assert(false);
-    return 0;
+    int ret;
+    int fatal;
+
+    for (;;) {
+        if (cpu->exception_index >= EXCP_INTERRUPT) {
+            ret = cpu->exception_index;
+            cpu->exception_index = -1;
+            break;
+        }
+
+        fatal = whpx_vcpu_run(cpu);
+
+        if (fatal) {
+            error_report("WHPX: Failed to exec a virtual processor");
+            abort();
+        }
+    }
+
+    return ret;
 }
 
 void whpx_destroy_vcpu(CPUState *cpu)
