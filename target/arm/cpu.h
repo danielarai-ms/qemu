@@ -84,6 +84,9 @@
 #define CPU_INTERRUPT_VINMI CPU_INTERRUPT_TGT_EXT_0
 #define CPU_INTERRUPT_VFNMI CPU_INTERRUPT_TGT_INT_1
 
+#define CPU_NB_REGS32 16
+#define CPU_NB_REGS64 32
+
 /* The usual mapping for an AArch64 system register to its AArch32
  * counterpart is for the 32 bit world to have access to the lower
  * half only (with writes leaving the upper half untouched). It's
@@ -246,14 +249,14 @@ typedef enum ARMFPStatusFlavour {
 
 typedef struct CPUArchState {
     /* Regs for current mode.  */
-    uint32_t regs[16];
+    uint32_t regs[CPU_NB_REGS32];
 
     /* 32/64 switch only happens when taking and returning from
      * exceptions so the overlap semantics are taken care of then
      * instead of having a complicated union.
      */
     /* Regs for A64 mode.  */
-    uint64_t xregs[32];
+    uint64_t xregs[CPU_NB_REGS64];
     uint64_t pc;
     /* PSTATE isn't an architectural register for ARMv8. However, it is
      * convenient for us to assemble the underlying state into a 32 bit format

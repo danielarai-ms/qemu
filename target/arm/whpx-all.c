@@ -25,11 +25,113 @@
 // XXX do not merge
 #include <stdio.h>
 
+/*
+ * The register layout roughly follows the layout of CPUARMState and
+ * not necessarily the order of the WHP definitions.
+ */
+static const WHV_REGISTER_NAME whpx_register_names[] = {
+    /* Aarch64 General purpose registers */
+    WHvArm64RegisterX0,
+    WHvArm64RegisterX1,
+    WHvArm64RegisterX2,
+    WHvArm64RegisterX3,
+    WHvArm64RegisterX4,
+    WHvArm64RegisterX5,
+    WHvArm64RegisterX6,
+    WHvArm64RegisterX7,
+    WHvArm64RegisterX8,
+    WHvArm64RegisterX9,
+    WHvArm64RegisterX10,
+    WHvArm64RegisterX11,
+    WHvArm64RegisterX12,
+    WHvArm64RegisterX13,
+    WHvArm64RegisterX14,
+    WHvArm64RegisterX15,
+    WHvArm64RegisterX16,
+    WHvArm64RegisterX17,
+    WHvArm64RegisterX18,
+    WHvArm64RegisterX19,
+    WHvArm64RegisterX20,
+    WHvArm64RegisterX21,
+    WHvArm64RegisterX22,
+    WHvArm64RegisterX23,
+    WHvArm64RegisterX24,
+    WHvArm64RegisterX25,
+    WHvArm64RegisterX26,
+    WHvArm64RegisterX27,
+    WHvArm64RegisterX28,
+
+    /* Aarch64 Frame pointer and link register (general purpose 29 and 30) */
+    WHvArm64RegisterFp,
+    WHvArm64RegisterLr,
+
+    /* Aarc64 stack pointer (general purpose 31, sometimes) */
+    WHvArm64RegisterSp,
+
+    /* Aarch64 Program counter */
+    WHvArm64RegisterPc,
+
+    /* Aarch64 Process state register */
+    WHvArm64RegisterPstate,
+
+    /* Aarch64 saved program status registers */
+    WHvArm64RegisterSpsrEl1,
+
+    /* Aarch64 exception link register */
+    WHvArm64RegisterElrEl1,
+
+    /* Aarch64 banked stack pointers */
+    WHvArm64RegisterSpEl0,
+    WHvArm64RegisterSpEl1,
+
+    /* Aarch64 floating point registers */
+    WHvArm64RegisterQ0,
+    WHvArm64RegisterQ1,
+    WHvArm64RegisterQ2,
+    WHvArm64RegisterQ3,
+    WHvArm64RegisterQ4,
+    WHvArm64RegisterQ5,
+    WHvArm64RegisterQ6,
+    WHvArm64RegisterQ7,
+    WHvArm64RegisterQ8,
+    WHvArm64RegisterQ9,
+    WHvArm64RegisterQ10,
+    WHvArm64RegisterQ11,
+    WHvArm64RegisterQ12,
+    WHvArm64RegisterQ13,
+    WHvArm64RegisterQ14,
+    WHvArm64RegisterQ15,
+    WHvArm64RegisterQ16,
+    WHvArm64RegisterQ17,
+    WHvArm64RegisterQ18,
+    WHvArm64RegisterQ19,
+    WHvArm64RegisterQ20,
+    WHvArm64RegisterQ21,
+    WHvArm64RegisterQ22,
+    WHvArm64RegisterQ23,
+    WHvArm64RegisterQ24,
+    WHvArm64RegisterQ25,
+    WHvArm64RegisterQ26,
+    WHvArm64RegisterQ27,
+    WHvArm64RegisterQ28,
+    WHvArm64RegisterQ29,
+    WHvArm64RegisterQ30,
+    WHvArm64RegisterQ31,
+    WHvArm64RegisterFpsr,
+    WHvArm64RegisterFpcr,
+
+    /* TODO: Other required registers? */
+};
+
+struct whpx_register_set {
+    WHV_REGISTER_VALUE values[RTL_NUMBER_OF(whpx_register_names)];
+};
+
 /* Partially copied from i386 */
 struct AccelCPUState {
+    /*
     bool window_registered;
     bool interruptable;
-    /*
     bool ready_for_pic_interrupt;
     uint64_t tpr;
     uint64_t apic_base;
@@ -256,11 +358,82 @@ void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
 
 }
 
-/* TODO: Refactor to share code with i386 if possible. */
+/* Partially derived from i386 */
 static void whpx_set_registers(CPUState *cpu, int level)
 {
-    /* TODO: Implement this function */
-    assert(false);
+    struct whpx_state *whpx = &whpx_global;
+    ARMCPU *arm_cpu = ARM_CPU(cpu);
+    CPUARMState *env = &arm_cpu->env;
+    struct whpx_register_set vcxt;
+    HRESULT hr;
+    int idx;
+    int fp_reg_nr;
+
+    assert(cpu_is_stopped(cpu) || qemu_cpu_is_self(cpu));
+
+    /* TODO: Is there an equivalent of the TSC? */
+
+    memset(&vcxt, 0, sizeof(struct whpx_register_set));
+
+    /* The X registers are the first 32 registers in the WHPX array.
+     * This includes the frame pointer, link register, and non-banked
+     * stack pointer
+     */
+    for (idx = 0; idx < CPU_NB_REGS64; idx++) {
+        vcxt.values[idx].Reg64 = env->xregs[idx];
+    }
+
+    /* Program counter */
+    vcxt.values[idx++].Reg64 = env->pc;
+
+    /* TODO: PSTATE may not be correct. */
+    vcxt.values[idx++].Reg32 = env->pstate;
+
+    /* TODO: uncached_cpsr */
+    vcxt.values[idx++].Reg32 = env->spsr;
+
+    /* TODO: banked_spsr */
+    /* TODO: banked_r13 */
+    /* TODO: banked_r14 */
+    /* TODO: usr_regs */
+    /* TODO: fiq_regs */
+
+    /* TODO: Other exception link registers */
+    vcxt.values[idx++].Reg64 = env->elr_el[1];
+
+    /* TODO: Other banked stack pointers */
+    vcxt.values[idx++].Reg64 = env->sp_el[0];
+    vcxt.values[idx++].Reg64 = env->sp_el[1];
+
+    /* The 32 floating point registers are arranged in the same relative
+     * order in QEMU and WHP.
+     *
+     * TODO: What's the appropriate type to use here? x86-64 has
+     * WHV_X64_FP_REGISTER but there doesn't seem to be an equivalent type
+     * for aarch64.
+     */
+    for (fp_reg_nr = 0; fp_reg_nr < 32; fp_reg_nr++) {
+        vcxt.values[idx++].Reg64 = *aa64_vfp_qreg(env, fp_reg_nr);
+    }
+
+    vcxt.values[idx++].Reg64 = env->vfp.fpsr;
+    vcxt.values[idx++].Reg64 = env->vfp.fpcr;
+
+    /* TODO: fp_status */
+    /* TODO: zcr */
+    /* TODO: smcr */
+
+    assert(idx == RTL_NUMBER_OF(whpx_register_names));
+    hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
+        whpx->partition, cpu->cpu_index,
+        whpx_register_names,
+        RTL_NUMBER_OF(whpx_register_names),
+        &vcxt.values[0]);
+
+    if (FAILED(hr)) {
+        error_report("WHPX:Failed to set virtual processor context, hr=%08lx",
+                     hr);
+    }
 }
 
 static void whpx_get_registers(CPUState *cpu)
@@ -371,7 +544,6 @@ int whpx_init_vcpu(CPUState *cpu)
     /* TODO: is there an equivalent of tsc_khz? */
     /* TODO: is there an equivalent of apic_bus_freq? */
 
-    vcpu->interruptable = true;
     vcpu->dirty = true;
     cpu->accel = vcpu;
     max_vcpu_index = max(max_vcpu_index, cpu->cpu_index);
