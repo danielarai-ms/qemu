@@ -85,6 +85,10 @@ static const WHV_REGISTER_NAME whpx_register_names[] = {
     WHvArm64RegisterSpEl0,
     WHvArm64RegisterSpEl1,
 
+    /* MMU translation table base registers */
+    WHvArm64RegisterTtbr0El1,
+    WHvArm64RegisterTtbr1El1,
+
     /* Aarch64 floating point registers */
     WHvArm64RegisterQ0,
     WHvArm64RegisterQ1,
@@ -326,7 +330,6 @@ void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
     if (capability.ProcessorFeaturesBanks.Bank0.PmuV3) {
         features |= 1ULL << ARM_FEATURE_PMU;
     }
-
     /* TODO: These are what KVM sets. Are they appropriate for WHPX? */
     features |= 1ULL << ARM_FEATURE_V8;
     features |= 1ULL << ARM_FEATURE_NEON;
@@ -406,12 +409,16 @@ static void whpx_set_registers(CPUState *cpu, int level)
     vcxt.values[idx++].Reg64 = env->sp_el[0];
     vcxt.values[idx++].Reg64 = env->sp_el[1];
 
+    /* MMU translation registers */
+    vcxt.values[idx++].Reg64 = env->cp15.ttbr0_ns;
+    vcxt.values[idx++].Reg64 = env->cp15.ttbr1_ns;
+
+    /* TODO: Other MMU translation registers */
+
     /* The 32 floating point registers are arranged in the same relative
      * order in QEMU and WHP.
      *
-     * TODO: What's the appropriate type to use here? x86-64 has
-     * WHV_X64_FP_REGISTER but there doesn't seem to be an equivalent type
-     * for aarch64.
+     * TODO: This code is likely wrong. The Q registers are 128 bits.
      */
     for (fp_reg_nr = 0; fp_reg_nr < 32; fp_reg_nr++) {
         vcxt.values[idx++].Reg64 = *aa64_vfp_qreg(env, fp_reg_nr);
@@ -492,12 +499,16 @@ static void whpx_get_registers(CPUState *cpu)
     env->sp_el[0] = vcxt.values[idx++].Reg64;
     env->sp_el[1] = vcxt.values[idx++].Reg64;
 
+    /* MMU translation registers */
+    env->cp15.ttbr0_ns = vcxt.values[idx++].Reg64;
+    env->cp15.ttbr1_ns = vcxt.values[idx++].Reg64;
+
+    /* TODO: Other MMU translation registers */
+
     /* The 32 floating point registers are arranged in the same relative
      * order in QEMU and WHP.
      *
-     * TODO: What's the appropriate type to use here? x86-64 has
-     * WHV_X64_FP_REGISTER but there doesn't seem to be an equivalent type
-     * for aarch64.
+     * TODO: These are probably wrong.
      */
     for (fp_reg_nr = 0; fp_reg_nr < 32; fp_reg_nr++) {
         *aa64_vfp_qreg(env, fp_reg_nr) = vcxt.values[idx++].Reg64;
@@ -753,7 +764,6 @@ static void whpx_update_mapping(hwaddr start_pa, ram_addr_t size,
     struct whpx_state *whpx = &whpx_global;
     HRESULT hr;
 
-    /*
     if (add) {
         printf("WHPX: ADD PA:%p Size:%p, Host:%p, %s, '%s'\n",
                (void*)start_pa, (void*)size, host_va,
@@ -762,7 +772,6 @@ static void whpx_update_mapping(hwaddr start_pa, ram_addr_t size,
         printf("WHPX: DEL PA:%p Size:%p, Host:%p,      '%s'\n",
                (void*)start_pa, (void*)size, host_va, name);
     }
-    */
 
     if (add) {
         hr = whp_dispatch.WHvMapGpaRange(whpx->partition,
