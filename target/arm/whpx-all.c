@@ -666,12 +666,18 @@ static int whpx_vcpu_run(CPUState *cpu)
         /* TODO: Is there any post-run work required? */
 
         switch (vcpu->exit_ctx.ExitReason) {
+        case WHvRunVpExitReasonCanceled:
+            cpu->exception_index = EXCP_INTERRUPT;
+            ret = 1;
+            break;
+
+
         case WHvRunVpExitReasonNone:
         case WHvRunVpExitReasonUnrecoverableException:
         case WHvRunVpExitReasonInvalidVpRegisterValue:
         case WHvRunVpExitReasonUnsupportedFeature:
         default:
-            error_report("WHPX: Unexpected VP exit code %d",
+            error_report("WHPX: Unexpected VP exit code %08x",
                          vcpu->exit_ctx.ExitReason);
             whpx_get_registers(cpu);
             bql_lock();
