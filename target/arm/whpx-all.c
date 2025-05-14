@@ -881,7 +881,7 @@ static void whpx_process_section(MemoryRegionSection *section, int add)
     unsigned int delta;
     uint64_t host_va;
 
-    if (!memory_region_is_ram(mr)) {
+    if (!memory_region_is_ram(mr) && !memory_region_is_romd(mr)) {
         return;
     }
 
