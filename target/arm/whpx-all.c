@@ -157,6 +157,72 @@ static uint32_t max_vcpu_index;
 struct whpx_state whpx_global;
 struct WHPDispatch whp_dispatch;
 
+/* XXX debug only - do not merge */
+static void dump_cpu(CPUState *cpu, const char *label)
+{
+    printf("Dumping CPU state for %s\n", label);
+
+#define DUMP_FIELD(_name) \
+    printf("%16s: %#16llx\n", #_name, (uint64_t) ARM_CPU(cpu)->env._name)
+
+    /* aarch32 general purpose registers */
+    DUMP_FIELD(regs[0]);
+    DUMP_FIELD(regs[1]);
+    DUMP_FIELD(regs[2]);
+    DUMP_FIELD(regs[3]);
+    DUMP_FIELD(regs[4]);
+    DUMP_FIELD(regs[5]);
+    DUMP_FIELD(regs[6]);
+    DUMP_FIELD(regs[7]);
+    DUMP_FIELD(regs[8]);
+    DUMP_FIELD(regs[9]);
+    DUMP_FIELD(regs[10]);
+    DUMP_FIELD(regs[11]);
+    DUMP_FIELD(regs[12]);
+    DUMP_FIELD(regs[13]);
+    DUMP_FIELD(regs[14]);
+    DUMP_FIELD(regs[15]);
+
+    /* aarch64 general purpose registers */
+    DUMP_FIELD(xregs[0]);
+    DUMP_FIELD(xregs[1]);
+    DUMP_FIELD(xregs[2]);
+    DUMP_FIELD(xregs[3]);
+    DUMP_FIELD(xregs[4]);
+    DUMP_FIELD(xregs[5]);
+    DUMP_FIELD(xregs[6]);
+    DUMP_FIELD(xregs[7]);
+    DUMP_FIELD(xregs[8]);
+    DUMP_FIELD(xregs[9]);
+    DUMP_FIELD(xregs[10]);
+    DUMP_FIELD(xregs[11]);
+    DUMP_FIELD(xregs[12]);
+    DUMP_FIELD(xregs[13]);
+    DUMP_FIELD(xregs[14]);
+    DUMP_FIELD(xregs[15]);
+    DUMP_FIELD(xregs[16]);
+    DUMP_FIELD(xregs[17]);
+    DUMP_FIELD(xregs[18]);
+    DUMP_FIELD(xregs[19]);
+    DUMP_FIELD(xregs[20]);
+    DUMP_FIELD(xregs[21]);
+    DUMP_FIELD(xregs[22]);
+    DUMP_FIELD(xregs[23]);
+    DUMP_FIELD(xregs[24]);
+    DUMP_FIELD(xregs[25]);
+    DUMP_FIELD(xregs[26]);
+    DUMP_FIELD(xregs[27]);
+    DUMP_FIELD(xregs[28]);
+    DUMP_FIELD(xregs[29]);
+    DUMP_FIELD(xregs[30]);
+    DUMP_FIELD(xregs[31]);
+
+
+    DUMP_FIELD(pc);
+    DUMP_FIELD(pstate);
+    DUMP_FIELD(spsr);
+}
+
 /*
  * The WHP names of the ID registers. These can all be read in a single call
  * to the appropriate WHP API.
@@ -376,6 +442,9 @@ static void whpx_set_registers(CPUState *cpu, int level)
 
     assert(cpu_is_stopped(cpu) || qemu_cpu_is_self(cpu));
 
+    /* XXX debugging */
+    dump_cpu(cpu, "set_registers");
+
     /* TODO: aarch32 support */
 
     /* TODO: Is there an equivalent of the TSC? */
@@ -528,6 +597,8 @@ static void whpx_get_registers(CPUState *cpu)
     /* TODO: smcr */
 
     assert(idx == RTL_NUMBER_OF(whpx_register_names));
+
+    dump_cpu(cpu, "get_registers");
 }
 
 static void do_whpx_cpu_synchronize_state(CPUState *cpu, run_on_cpu_data arg)
