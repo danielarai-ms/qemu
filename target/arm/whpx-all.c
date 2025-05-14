@@ -363,6 +363,7 @@ void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
 }
 
 /* Partially derived from i386 */
+/* The corresponding functions in KVM is kvm_arch_put_registers */
 static void whpx_set_registers(CPUState *cpu, int level)
 {
     struct whpx_state *whpx = &whpx_global;
@@ -375,13 +376,16 @@ static void whpx_set_registers(CPUState *cpu, int level)
 
     assert(cpu_is_stopped(cpu) || qemu_cpu_is_self(cpu));
 
+    /* TODO: aarch32 support */
+
     /* TODO: Is there an equivalent of the TSC? */
 
     memset(&vcxt, 0, sizeof(struct whpx_register_set));
 
     /* The X registers are the first 32 registers in the WHPX array.
      * This includes the frame pointer, link register, and non-banked
-     * stack pointer
+     * stack pointer.
+     * TODO: SP probably needs to be handled more like KVM.
      */
     for (idx = 0; idx < CPU_NB_REGS64; idx++) {
         vcxt.values[idx].Reg64 = env->xregs[idx];
@@ -401,6 +405,8 @@ static void whpx_set_registers(CPUState *cpu, int level)
     /* TODO: banked_r14 */
     /* TODO: usr_regs */
     /* TODO: fiq_regs */
+
+    /* SVE */
 
     /* TODO: Other exception link registers */
     vcxt.values[idx++].Reg64 = env->elr_el[1];
