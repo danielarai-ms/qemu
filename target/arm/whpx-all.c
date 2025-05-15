@@ -25,6 +25,7 @@
 
 // XXX do not merge
 #include <stdio.h>
+#include <stdlib.h>
 
 /*
  * The register layout roughly follows the layout of CPUARMState and
@@ -740,6 +741,15 @@ error:
     return ret;
 }
 
+/* XXX debugging - force emulation to convinue even if there are unexpected
+ * exits.
+ */
+static bool force_continue(void)
+{
+    const char *val = getenv("QEMU_FORCE_CONTINUE");
+    return(val != NULL);
+}
+
 static int whpx_vcpu_run(CPUState *cpu)
 {
     struct whpx_state *whpx = &whpx_global;
@@ -792,6 +802,10 @@ static int whpx_vcpu_run(CPUState *cpu)
         case WHvRunVpExitReasonInvalidVpRegisterValue:
         case WHvRunVpExitReasonUnsupportedFeature:
         default:
+            if (force_continue()) {
+                ret = 1;
+                break;
+            }
             error_report("WHPX: Unexpected VP exit code %08x",
                          vcpu->exit_ctx.ExitReason);
             whpx_get_registers(cpu);
