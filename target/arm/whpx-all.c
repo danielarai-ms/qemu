@@ -160,10 +160,13 @@ struct WHPDispatch whp_dispatch;
 /* XXX debug only - do not merge */
 static void dump_cpu(CPUState *cpu, const char *label)
 {
+    uint32_t pstate;
+    CPUARMState *env = &ARM_CPU(cpu)->env;
+
     printf("Dumping CPU state for %s\n", label);
 
 #define DUMP_FIELD(_name) \
-    printf("%16s: %#16llx\n", #_name, (uint64_t) ARM_CPU(cpu)->env._name)
+    printf("%16s: %#16llx\n", #_name, (uint64_t) env->_name)
 
     /* aarch32 general purpose registers */
     DUMP_FIELD(regs[0]);
@@ -217,10 +220,16 @@ static void dump_cpu(CPUState *cpu, const char *label)
     DUMP_FIELD(xregs[30]);
     DUMP_FIELD(xregs[31]);
 
-
     DUMP_FIELD(pc);
-    DUMP_FIELD(pstate);
     DUMP_FIELD(spsr);
+
+    /* pstate is special */
+    if (is_a64(env)) {
+        pstate = pstate_read(env);
+    } else {
+        pstate = cpsr_read(env);
+    }
+    printf("%16s: %#16llx\n", "pstate", (uint64_t) pstate);
 }
 
 /*
@@ -439,6 +448,7 @@ static void whpx_set_registers(CPUState *cpu, int level)
     HRESULT hr;
     int idx;
     int fp_reg_nr;
+    uint32_t pstate;
 
     assert(cpu_is_stopped(cpu) || qemu_cpu_is_self(cpu));
 
@@ -463,8 +473,15 @@ static void whpx_set_registers(CPUState *cpu, int level)
     /* Program counter */
     vcxt.values[idx++].Reg64 = env->pc;
 
-    /* TODO: PSTATE may not be correct. */
-    vcxt.values[idx++].Reg32 = env->pstate;
+    /* WHP treats pstate as a single register. QEMU splits pstate across
+     * several different fields. Translate between the two formats.
+     */
+    if (is_a64(env)) {
+        pstate = pstate_read(env);
+    } else {
+        pstate = cpsr_read(env);
+    }
+    vcxt.values[idx++].Reg32 = pstate;
 
     /* TODO: uncached_cpsr */
     vcxt.values[idx++].Reg32 = env->spsr;
@@ -475,7 +492,7 @@ static void whpx_set_registers(CPUState *cpu, int level)
     /* TODO: usr_regs */
     /* TODO: fiq_regs */
 
-    /* SVE */
+    /* TODO: SVE */
 
     /* TODO: Other exception link registers */
     vcxt.values[idx++].Reg64 = env->elr_el[1];
@@ -528,6 +545,7 @@ static void whpx_get_registers(CPUState *cpu)
     HRESULT hr;
     int idx;
     int fp_reg_nr;
+    uint32_t pstate;
 
     assert(cpu_is_stopped(cpu) || qemu_cpu_is_self(cpu));
 
@@ -554,9 +572,16 @@ static void whpx_get_registers(CPUState *cpu)
     /* Program counter */
     env->pc = vcxt.values[idx++].Reg64;
 
-
-    /* TODO: PSTATE may not be correct. */
-    env->pstate = vcxt.values[idx++].Reg32;
+    /* WHP treats pstate as a single register. QEMU splits pstate across
+     * several different fields. Translate between the two formats.
+     */
+    pstate = vcxt.values[idx++].Reg32;
+    if (is_a64(env)) {
+        pstate_write(env, pstate);
+    } else {
+        assert(0);
+        cpsr_write(env, pstate, 0xffffffff, CPSRWriteRaw);
+    }
 
     /* TODO: uncached_cpsr */
     env->spsr = vcxt.values[idx++].Reg32;
