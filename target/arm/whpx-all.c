@@ -756,6 +756,7 @@ static int whpx_vcpu_run(CPUState *cpu)
     HRESULT hr;
     AccelCPUState *vcpu = cpu->accel;
     int ret;
+    WHV_MEMORY_ACCESS_CONTEXT *access_info;
 
     g_assert(bql_locked());
 
@@ -794,6 +795,29 @@ static int whpx_vcpu_run(CPUState *cpu)
         case WHvRunVpExitReasonCanceled:
             cpu->exception_index = EXCP_INTERRUPT;
             ret = 1;
+            break;
+
+        case WHvRunVpExitReasonUnmappedGpa:
+            /* XXX - debugging - probably don't need this */
+            whpx_get_registers(cpu);
+            access_info = &vcpu->exit_ctx.MemoryAccess;
+            /* XXX - debugging */
+            WHV_INTERCEPT_MESSAGE_HEADER *int_hdr = &access_info->Header;
+            printf("Intercept header len %d, access_type %d, Pc %016llx\n",
+                   int_hdr->InstructionLength, int_hdr->InterceptAccessType,
+                   int_hdr->Pc);
+            printf("Unmapped GPA: len %d inst %#08x info %#02x GPA %#016llx GVA %#016llx syndrome %#016llx\n",
+                   access_info->AccessInfo.AsUINT8,
+                   access_info->InstructionByteCount,
+                   *(uint32_t*) access_info->InstructionBytes,
+                   access_info->Gpa, access_info->Gva,
+                   access_info->Syndrome);
+
+            if (force_continue()) {
+                ret = 1;
+                break;
+            }
+            ret = -1;
             break;
 
 
@@ -921,6 +945,9 @@ static void whpx_process_section(MemoryRegionSection *section, int add)
     uint64_t host_va;
 
     if (!memory_region_is_ram(mr) && !memory_region_is_romd(mr)) {
+        /* XXX  - debugging - just to find out where regions are */
+        printf("WHPX: HID PA:%p Size:%p, '%s'\n",
+               (void*)start_pa, (void*)size, mr->name);
         return;
     }
 
