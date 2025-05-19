@@ -917,33 +917,69 @@ static int handle_gpa_exit(CPUState *cpu)
          */
         assert(da_syndrome.isv);
 
+        /* TODO: There are addressing modes that update the base register. How
+         * should those be handled?
+         */
+
+        /* Information common to both reads and writes */
+        /* TODO: It may be necessary to more than just simple reads/write */
+        data_len = syndrome_to_data_len(da_syndrome);
+        /* This is the guest physical address being accessed */
+        data_addr = access_info->Gpa;
+
+        memset(&regs, 0, sizeof (WHV_REGISTER_VALUE) * REG_PAIR);
+        reg_names[0] = WHvArm64RegisterX0 + da_syndrome.srt;
+        assert(reg_names[0] >= WHvArm64RegisterX0 &&
+               reg_names[0] <= WHvArm64RegisterLr);
+
+        regs[1].Reg64 = int_hdr->Pc + int_hdr->InstructionLength;
+        reg_names[1] = WHvArm64RegisterPc;
+
         if (da_syndrome.wnr) {
             /* wnr=1 means write to memory */
-            /* TODO: Handle writes */
-            g_assert_not_reached();
+            /* Get register contents from WHP */
+            hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
+                whpx->partition,
+                cpu->cpu_index,
+                &reg_names[0],
+                1,
+                &regs[0]);
+            if (FAILED(hr)) {
+                error_report("WHPX: Failed to read virtual register %d\n",
+                             reg_names[0]);
+                return -1;
+            }
+            /* TODO: This function doesn't have a return value. That may mean
+             * that we need to track physically-not-present memory and
+             * handle it ourselves? Or does this function work if the address
+             * is unbacked?
+             */
+            cpu_physical_memory_write(data_addr, &regs[0].Reg64, data_len);
+
+            /* Update Pc */
+            hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
+                whpx->partition,
+                cpu->cpu_index,
+                &reg_names[1],
+                1,
+                &regs[1]);
+            if (FAILED(hr)) {
+                error_report("WHPX: Failed to write Pc\n");
+                return -1;
+            }
         } else {
             /* wnr=0 means read from memory */
-            /* TODO: It may be necessary to more than just simple reads */
-            data_len = syndrome_to_data_len(da_syndrome);
-            /* This is the guest physical address being accessed */
-            data_addr = access_info->Gpa;
 
             /* TODO: This function doesn't have a return value. That may mean
              * that we need to track physically-not-present memory and
              * handle it ourselves? Or does this function return correct
              * data when a physically not present address is read?
              */
-            memset(&regs, 0, sizeof (WHV_REGISTER_VALUE) * REG_PAIR);
             cpu_physical_memory_read(data_addr, &regs[0].Reg64, data_len);
             regs[0].Reg64 = mask_value(regs[0].Reg64, data_len, da_syndrome.sse);
-            reg_names[0] = WHvArm64RegisterX0 + da_syndrome.srt;
-            assert(reg_names[0] >= WHvArm64RegisterX0 &&
-                   reg_names[0] <= WHvArm64RegisterLr);
 
             assert(int_hdr->InstructionLength == 2 ||
                    int_hdr->InstructionLength == 4);
-            regs[1].Reg64 = int_hdr->Pc + int_hdr->InstructionLength;
-            reg_names[1] = WHvArm64RegisterPc;
 
             /* Set the target register and update PC */
             hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
