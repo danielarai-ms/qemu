@@ -19,6 +19,7 @@
 #include "hw/boards.h"
 #include "whpx-arm.h"
 #include "migration/blocker.h"
+#include "syndrome.h"
 
 #include "whpx-internal.h"
 #include "whpx-accel-ops.h"
@@ -26,6 +27,11 @@
 // XXX do not merge
 #include <stdio.h>
 #include <stdlib.h>
+
+#define SAS_BYTE       0
+#define SAS_HALFWORD   1
+#define SAS_WORD       2
+#define SAS_DOUBLEWORD 3
 
 /*
  * The register layout roughly follows the layout of CPUARMState and
@@ -149,6 +155,65 @@ struct AccelCPUState {
     WHV_RUN_VP_EXIT_CONTEXT exit_ctx;
 };
 
+struct AarchSyndromeGeneric {
+    union {
+        struct {
+            uint32_t res: 25;
+            uint32_t il: 1;
+            uint32_t ec: 6;
+        };
+        uint32_t as_uint32;
+    };
+};
+
+/* Aarch64 data abort syndrome structure. */
+struct AarchSyndromeDataAbort {
+    union {
+        struct {
+            /* The format of the least significant bits depends on the
+             * exception class. This layout is only valid for data aborts
+             */
+            uint32_t dfsc: 6;
+            uint32_t wnr: 1;
+            uint32_t s1ptw: 1;
+            uint32_t cm: 1;
+            uint32_t ea: 1;
+            uint32_t fnv: 1;
+            uint32_t res0: 3;
+            uint32_t ar: 1;
+            uint32_t sf: 1;
+            uint32_t srt: 5;
+
+            /* Syndrome sign extend (valid if isv is 1). On a load, indicates whether the
+             * value should be sign extended.
+             */
+            uint32_t sse: 1;
+
+            /* Syndrome access size (valid if isv is 1):
+             * 00 - Byte
+             * 01 - Halfword
+             * 10 - Word
+             * 11 - Doubleword.
+             */
+            uint32_t sas: 2;
+
+            /* Instruction syndrome valid. Indicates whether the SAS
+             * through AR fields are valid.
+             */
+            uint32_t isv: 1;
+
+            /* The final two fields are valid for all exception classes */
+
+            /* Instruction length. 0 = 16 bit, 1 = 32 bit */
+            uint32_t il: 1;
+
+            /* Exception class, 100100 or 100101 for data abort */
+            uint32_t ec: 6;
+        };
+        uint32_t as_uint32;
+    };
+};
+
 /* All of these copied from i386. */
 static bool whpx_allowed;
 static bool whp_dispatch_initialized;
@@ -158,6 +223,17 @@ static uint32_t max_vcpu_index;
 struct whpx_state whpx_global;
 struct WHPDispatch whp_dispatch;
 
+/* XXX debug only - do not merge */
+static void dump_syndrome(struct AarchSyndromeDataAbort syndrome)
+{
+    printf("ec=%#x, il=%d, isv=%d, sas=%d sse=%d, srt=%d, sf=%d, ar=%d"
+           " fnv=%d ea=%d cm=%d s1ptw=%d, wnr=%d, dfsc=%d\n",
+           syndrome.ec, syndrome.il, syndrome.isv, syndrome.sas, syndrome.sse,
+           syndrome.srt, syndrome.sf, syndrome.ar, syndrome.fnv, syndrome.ea,
+           syndrome.cm, syndrome.s1ptw, syndrome.wnr, syndrome.dfsc);
+}
+
+#if 0
 /* XXX debug only - do not merge */
 static void dump_cpu(CPUState *cpu, const char *label)
 {
@@ -232,6 +308,7 @@ static void dump_cpu(CPUState *cpu, const char *label)
     }
     printf("%16s: %#16llx\n", "pstate", (uint64_t) pstate);
 }
+#endif
 
 /*
  * The WHP names of the ID registers. These can all be read in a single call
@@ -454,7 +531,7 @@ static void whpx_set_registers(CPUState *cpu, int level)
     assert(cpu_is_stopped(cpu) || qemu_cpu_is_self(cpu));
 
     /* XXX debugging */
-    dump_cpu(cpu, "set_registers");
+    //dump_cpu(cpu, "set_registers");
 
     /* TODO: aarch32 support */
 
@@ -624,7 +701,7 @@ static void whpx_get_registers(CPUState *cpu)
 
     assert(idx == RTL_NUMBER_OF(whpx_register_names));
 
-    dump_cpu(cpu, "get_registers");
+    //dump_cpu(cpu, "get_registers");
 }
 
 static void do_whpx_cpu_synchronize_state(CPUState *cpu, run_on_cpu_data arg)
@@ -741,6 +818,153 @@ error:
     return ret;
 }
 
+static hwaddr syndrome_to_data_len(struct AarchSyndromeDataAbort syndrome)
+{
+    hwaddr len;
+    assert(syndrome.isv);
+    len = (hwaddr) 1 << (syndrome.sas);
+    assert(len >= 1 && len <= 8);
+    return len;
+}
+
+static uint64_t mask_value(uint64_t val, hwaddr len, bool sign_extend)
+{
+    int64_t final;
+    uint64_t mask = ~0;
+
+    switch (len) {
+    case 1:
+        mask >>= (64 - 8);
+        final = (int64_t)(int8_t)(val & mask);
+        break;
+
+    case 2:
+        mask >>= (64 - 16);
+        final = (int64_t)(int16_t)(val & mask);
+        break;
+
+    case 4:
+        mask >>= (64 - 32);
+        final = (int64_t)(int32_t)(val & mask);
+        break;
+
+    case 8:
+        final = (int64_t) val;
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+    return (uint64_t) final;
+}
+
+/* TODO: We're not tracking registered MMIO regions. Do we need to?
+ *
+ * TODO: This probably doesn't work for AARCH32 code yet.
+ */
+static int handle_gpa_exit(CPUState *cpu)
+{
+    struct whpx_state *whpx = &whpx_global;
+    AccelCPUState *vcpu = cpu->accel;
+    WHV_MEMORY_ACCESS_CONTEXT *access_info;
+
+    /* XXX - debugging - probably don't need this */
+    whpx_get_registers(cpu);
+    access_info = &vcpu->exit_ctx.MemoryAccess;
+    struct AarchSyndromeGeneric gen_syndrome;
+    struct AarchSyndromeDataAbort da_syndrome;
+    hwaddr data_len;
+    hwaddr data_addr;
+#define REG_PAIR 2
+    WHV_REGISTER_VALUE regs[REG_PAIR];
+    WHV_REGISTER_NAME reg_names[REG_PAIR];
+    HRESULT hr;
+
+    /* XXX debugging */
+    static uint64_t last_pc;
+    bool should_log = (last_pc != access_info->Header.Pc);
+    last_pc = access_info->Header.Pc;
+
+    gen_syndrome.as_uint32 = (uint32_t) access_info->Syndrome;
+    if (should_log) {
+        printf("Unhandled GPA with syndrome ec %#06x il %d\n", gen_syndrome.ec,
+               gen_syndrome.il);
+    }
+
+    if (gen_syndrome.ec == EC_DATAABORT ||
+        gen_syndrome.ec == EC_DATAABORT_SAME_EL) {
+        da_syndrome.as_uint32 = (uint32_t) access_info->Syndrome;
+
+        if (should_log) {
+            dump_syndrome(da_syndrome);
+        }
+        /* XXX - debugging */
+        WHV_INTERCEPT_MESSAGE_HEADER *int_hdr = &access_info->Header;
+        if (should_log) {
+            printf("Intercept header len %d, access_type %d, Pc %016llx\n",
+                   int_hdr->InstructionLength, int_hdr->InterceptAccessType,
+                   int_hdr->Pc);
+            printf("Unmapped GPA: len %d inst %#010x info %#04x GPA %#018llx GVA %#018llx syndrome %#010x\n",
+                   access_info->AccessInfo.AsUINT8,
+                   access_info->InstructionByteCount,
+                   *(uint32_t*) access_info->InstructionBytes,
+                   access_info->Gpa, access_info->Gva,
+                   da_syndrome.as_uint32);
+        }
+
+        /* TODO: Handle situations where the instruction syndrome info is
+         * not valid
+         */
+        assert(da_syndrome.isv);
+
+        if (da_syndrome.wnr) {
+            /* wnr=1 means write to memory */
+            /* TODO: Handle writes */
+            g_assert_not_reached();
+        } else {
+            /* wnr=0 means read from memory */
+            /* TODO: It may be necessary to more than just simple reads */
+            data_len = syndrome_to_data_len(da_syndrome);
+            /* This is the guest physical address being accessed */
+            data_addr = access_info->Gpa;
+
+            /* TODO: This function doesn't have a return value. That may mean
+             * that we need to track physically-not-present memory and
+             * handle it ourselves? Or does this function return correct
+             * data when a physically not present address is read?
+             */
+            memset(&regs, 0, sizeof (WHV_REGISTER_VALUE) * REG_PAIR);
+            cpu_physical_memory_read(data_addr, &regs[0].Reg64, data_len);
+            regs[0].Reg64 = mask_value(regs[0].Reg64, data_len, da_syndrome.sse);
+            reg_names[0] = WHvArm64RegisterX0 + da_syndrome.srt;
+            assert(reg_names[0] >= WHvArm64RegisterX0 &&
+                   reg_names[0] <= WHvArm64RegisterLr);
+
+            assert(int_hdr->InstructionLength == 2 ||
+                   int_hdr->InstructionLength == 4);
+            regs[1].Reg64 = int_hdr->Pc + int_hdr->InstructionLength;
+            reg_names[1] = WHvArm64RegisterPc;
+
+            /* Set the target register and update PC */
+            hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
+                whpx->partition,
+                cpu->cpu_index,
+                &reg_names[0], REG_PAIR, &regs[0]);
+            if (FAILED(hr)) {
+                error_report("WHPX: Failed to write virtual register %d or Pc\n",
+                             reg_names[0]);
+                return -1;
+            }
+        }
+    } else {
+        /* TODO: Handle other types of GPA exits. */
+        g_assert_not_reached();
+    }
+
+    assert(!cpu->accel->dirty);
+    return 1;
+}
+
 /* XXX debugging - force emulation to convinue even if there are unexpected
  * exits.
  */
@@ -756,7 +980,6 @@ static int whpx_vcpu_run(CPUState *cpu)
     HRESULT hr;
     AccelCPUState *vcpu = cpu->accel;
     int ret;
-    WHV_MEMORY_ACCESS_CONTEXT *access_info;
 
     g_assert(bql_locked());
 
@@ -798,28 +1021,11 @@ static int whpx_vcpu_run(CPUState *cpu)
             break;
 
         case WHvRunVpExitReasonUnmappedGpa:
-            /* XXX - debugging - probably don't need this */
-            whpx_get_registers(cpu);
-            access_info = &vcpu->exit_ctx.MemoryAccess;
-            /* XXX - debugging */
-            WHV_INTERCEPT_MESSAGE_HEADER *int_hdr = &access_info->Header;
-            printf("Intercept header len %d, access_type %d, Pc %016llx\n",
-                   int_hdr->InstructionLength, int_hdr->InterceptAccessType,
-                   int_hdr->Pc);
-            printf("Unmapped GPA: len %d inst %#08x info %#02x GPA %#016llx GVA %#016llx syndrome %#016llx\n",
-                   access_info->AccessInfo.AsUINT8,
-                   access_info->InstructionByteCount,
-                   *(uint32_t*) access_info->InstructionBytes,
-                   access_info->Gpa, access_info->Gva,
-                   access_info->Syndrome);
-
+            ret = handle_gpa_exit(cpu);
             if (force_continue()) {
                 ret = 1;
-                break;
             }
-            ret = -1;
             break;
-
 
         case WHvRunVpExitReasonNone:
         case WHvRunVpExitReasonUnrecoverableException:
@@ -994,7 +1200,7 @@ static void whpx_region_del(MemoryListener *listener,
 }
 
 static void whpx_log_sync(MemoryListener *listener,
-                         MemoryRegionSection *section)
+                          MemoryRegionSection *section)
 {
     MemoryRegion *mr = section->mr;
 
