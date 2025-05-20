@@ -220,6 +220,11 @@ static bool whp_dispatch_initialized;
 static HMODULE hWinHvPlatform;
 static uint32_t max_vcpu_index;
 
+/* XXX debugging - force CPU state synchronization even if we think the
+ * state is clean.
+ */
+static bool force_cpu_sync = true;
+
 struct whpx_state whpx_global;
 struct WHPDispatch whp_dispatch;
 
@@ -233,7 +238,6 @@ static void dump_syndrome(struct AarchSyndromeDataAbort syndrome)
            syndrome.cm, syndrome.s1ptw, syndrome.wnr, syndrome.dfsc);
 }
 
-#if 0
 /* XXX debug only - do not merge */
 static void dump_cpu(CPUState *cpu, const char *label)
 {
@@ -308,7 +312,6 @@ static void dump_cpu(CPUState *cpu, const char *label)
     }
     printf("%16s: %#16llx\n", "pstate", (uint64_t) pstate);
 }
-#endif
 
 /*
  * The WHP names of the ID registers. These can all be read in a single call
@@ -531,7 +534,7 @@ static void whpx_set_registers(CPUState *cpu, int level)
     assert(cpu_is_stopped(cpu) || qemu_cpu_is_self(cpu));
 
     /* XXX debugging */
-    //dump_cpu(cpu, "set_registers");
+    dump_cpu(cpu, "set_registers");
 
     /* TODO: aarch32 support */
 
@@ -701,12 +704,13 @@ static void whpx_get_registers(CPUState *cpu)
 
     assert(idx == RTL_NUMBER_OF(whpx_register_names));
 
-    //dump_cpu(cpu, "get_registers");
+    /* XXX debugging */
+    dump_cpu(cpu, "get_registers");
 }
 
 static void do_whpx_cpu_synchronize_state(CPUState *cpu, run_on_cpu_data arg)
 {
-    if (!cpu->accel->dirty) {
+    if (!cpu->accel->dirty || force_cpu_sync) {
         whpx_get_registers(cpu);
         cpu->accel->dirty = true;
     }
@@ -738,7 +742,7 @@ static void do_whpx_cpu_synchronize_pre_loadvm(CPUState *cpu,
 
 void whpx_cpu_synchronize_state(CPUState *cpu)
 {
-    if (!cpu->accel->dirty) {
+    if (!cpu->accel->dirty || force_cpu_sync) {
         run_on_cpu(cpu, do_whpx_cpu_synchronize_state, RUN_ON_CPU_NULL);
     }
 }
@@ -881,9 +885,10 @@ static int handle_gpa_exit(CPUState *cpu)
     HRESULT hr;
 
     /* XXX debugging */
-    static uint64_t last_pc;
-    bool should_log = (last_pc != access_info->Header.Pc);
-    last_pc = access_info->Header.Pc;
+    //static uint64_t last_pc;
+    //bool should_log = (last_pc != access_info->Header.Pc);
+    bool should_log = true;
+    //last_pc = access_info->Header.Pc;
 
     gen_syndrome.as_uint32 = (uint32_t) access_info->Syndrome;
     if (should_log) {
@@ -992,12 +997,17 @@ static int handle_gpa_exit(CPUState *cpu)
                 return -1;
             }
         }
+
+        if (force_cpu_sync) {
+            whpx_get_registers(cpu);
+            cpu->accel->dirty = true;
+        }
     } else {
         /* TODO: Handle other types of GPA exits. */
         g_assert_not_reached();
     }
 
-    assert(!cpu->accel->dirty);
+    assert(!cpu->accel->dirty || force_cpu_sync);
     return 1;
 }
 
@@ -1028,7 +1038,7 @@ static int whpx_vcpu_run(CPUState *cpu)
     cpu_exec_start(cpu);
 
     do {
-        if (cpu->accel->dirty) {
+        if (cpu->accel->dirty || force_cpu_sync) {
             whpx_set_registers(cpu, WHPX_SET_RUNTIME_STATE);
             cpu->accel->dirty = false;
         }
@@ -1046,6 +1056,11 @@ static int whpx_vcpu_run(CPUState *cpu)
                          " hr=%08lx", hr);
             ret = -1;
             break;
+        }
+
+        if (force_cpu_sync) {
+            whpx_get_registers(cpu);
+            cpu->accel->dirty = true;
         }
 
         /* TODO: Is there any post-run work required? */
@@ -1240,7 +1255,7 @@ static void whpx_log_sync(MemoryListener *listener,
 {
     MemoryRegion *mr = section->mr;
 
-    if (!memory_region_is_ram(mr)) {
+    if (!memory_region_is_ram(mr) && !memory_region_is_romd(mr)) {
         return;
     }
 
