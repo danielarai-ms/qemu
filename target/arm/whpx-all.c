@@ -1046,7 +1046,11 @@ static int whpx_vcpu_run(CPUState *cpu)
         /* TODO: Single step handling */
 
         /* TODO: Interrupt injection */
+        /* XXX just to see if this is why we're not making progress */
+        assert(cpu->interrupt_request == 0);
 
+        /* XXX debug logging */
+        printf("Running virtual processor");
         hr = whp_dispatch.WHvRunVirtualProcessor(
             whpx->partition, cpu->cpu_index,
             &vcpu->exit_ctx, sizeof(vcpu->exit_ctx));
