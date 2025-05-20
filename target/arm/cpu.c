@@ -1047,6 +1047,9 @@ void arm_cpu_update_vserr(ARMCPU *cpu)
 #ifndef CONFIG_USER_ONLY
 static void arm_cpu_set_irq(void *opaque, int irq, int level)
 {
+    /* XXX debugging */
+    printf("arm_cpu_set_irq irq %d level %d\n", irq, level);
+
     ARMCPU *cpu = opaque;
     CPUARMState *env = &cpu->env;
     CPUState *cs = CPU(cpu);
