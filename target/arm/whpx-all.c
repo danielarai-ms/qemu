@@ -1433,12 +1433,12 @@ static int whpx_accel_init(MachineState *ms)
      * be provided when the partition is set up, or else the partition
      * setup will fail.
      */
-    /*
     ic_param->GicV3Parameters.GicdBaseAddress = 0xffff0000;
     ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0xeff68000;
-    */
+    /*
     ic_param->GicV3Parameters.GicdBaseAddress = 0x0000000008000000ll;
     ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0x0000000008090000ll;
+    */
     ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
     ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
     ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
@@ -1476,9 +1476,15 @@ int whpx_enabled(void)
     return whpx_allowed;
 }
 
-bool whpx_irqchip_in_platform(void) {
+bool whpx_irqchip_in_platform(void)
+{
 
-    return true;
+    /*return true;*/
+    /* XXX debugging - pretend that the accelerator does not know how to
+     * emulate the interrupt controller. See if this makes things sort of
+     * work with the emulated interrupt controller.
+     */
+    return false;
 }
 
 static void whpx_accel_class_init(ObjectClass *oc, const void *data)
