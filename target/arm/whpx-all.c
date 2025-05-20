@@ -1420,8 +1420,21 @@ static int whpx_accel_init(MachineState *ms)
     memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
     ic_param = &prop.Arm64IcParameters;
     ic_param->EmulationMode = WHvArm64IcEmulationModeGicV3;
+    /* XXX - hard coding these to match? how QEMU happens to set up the GIC
+     * in my test case. This needs to be fixed by QEMU somehow providing
+     * the actual GIC parameters to the WHPX accelerator. Possibly the
+     * GIC needs to be initialized with some default address (since we might
+     * not know the final address at this time) and then changed to the correct
+     * address later. Remapping is supported by WHP, but some address must
+     * be provided when the partition is set up, or else the partition
+     * setup will fail.
+     */
+    /*
     ic_param->GicV3Parameters.GicdBaseAddress = 0xffff0000;
     ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0xeff68000;
+    */
+    ic_param->GicV3Parameters.GicdBaseAddress = 0x0000000008000000ll;
+    ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0x0000000008090000ll;
     ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
     ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
     ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
