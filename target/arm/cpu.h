@@ -3254,4 +3254,6 @@ static inline target_ulong cpu_untagged_addr(CPUState *cs, target_ulong x)
 #endif /* TARGET_TAGGED_ADDRESSES */
 #endif /* CONFIG_USER_ONLY */
 
+/* XXX debugging */
+void cpu_debug_cpu(CPUState *cs);
 #endif

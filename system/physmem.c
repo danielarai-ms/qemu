@@ -3144,12 +3144,13 @@ MemTxResult address_space_write(AddressSpace *as, hwaddr addr,
     }
 
     /* XXX debugging - do not merge */
+    /*
     uint64_t data = 0;
     memcpy(&data, buf, MIN(len, 8));
 
     printf("physmem write %#llx len %#llx data %#llx\n", addr, len,
            data);
-
+    */
 
     return result;
 }

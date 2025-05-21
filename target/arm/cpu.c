@@ -1048,7 +1048,9 @@ void arm_cpu_update_vserr(ARMCPU *cpu)
 static void arm_cpu_set_irq(void *opaque, int irq, int level)
 {
     /* XXX debugging */
+    /*
     printf("arm_cpu_set_irq irq %d level %d\n", irq, level);
+    */
 
     ARMCPU *cpu = opaque;
     CPUARMState *env = &cpu->env;
@@ -2804,3 +2806,12 @@ static void arm_cpu_register_types(void)
 }
 
 type_init(arm_cpu_register_types)
+
+/* XXX - debugging */
+void cpu_debug_cpu(CPUState *cs)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+    CPUARMState *state = &cpu->env;
+
+    printf("Pc %#018llx\n", state->pc);
+}

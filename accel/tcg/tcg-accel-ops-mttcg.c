@@ -55,6 +55,8 @@ static void mttcg_force_rcu(Notifier *notify, void *data)
     async_run_on_cpu(cpu, do_nothing, RUN_ON_CPU_NULL);
 }
 
+extern void cpu_debug_cpu(CPUState *cpu);
+
 /*
  * In the multi-threaded case each vCPU has its own thread. The TLS
  * variable current_cpu can be used deep in the code to find the
@@ -88,6 +90,9 @@ static void *mttcg_cpu_thread_fn(void *arg)
     cpu->exit_request = 1;
 
     do {
+        /* XXX debugging */
+        printf("mttcg_cpu_thread_fn main loop\n");
+        cpu_debug_cpu(cpu);
         if (cpu_can_run(cpu)) {
             int r;
             bql_unlock();

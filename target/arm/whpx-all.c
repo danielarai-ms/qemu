@@ -615,6 +615,20 @@ static void whpx_set_registers(CPUState *cpu, int level)
         error_report("WHPX:Failed to set virtual processor context, hr=%08lx",
                      hr);
     }
+
+    /* XXX just an experiment - need to move this somewhere else */
+    static bool gic_set;
+    if (!gic_set) {
+        WHV_REGISTER_VALUE gic_base = {};
+        WHV_REGISTER_NAME name = WHvArm64RegisterGicrBaseGpa;
+        gic_base.Reg64 = 0x00000000080a0000ll;
+        hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
+            whpx->partition, cpu->cpu_index,
+            &name, 1, &gic_base);
+        assert(!FAILED(hr));
+
+        gic_set = true;
+    }
 }
 
 static void whpx_get_registers(CPUState *cpu)
@@ -1050,7 +1064,7 @@ static int whpx_vcpu_run(CPUState *cpu)
         assert(cpu->interrupt_request == 0);
 
         /* XXX debug logging */
-        printf("Running virtual processor");
+        printf("Running virtual processor\n");
         hr = whp_dispatch.WHvRunVirtualProcessor(
             whpx->partition, cpu->cpu_index,
             &vcpu->exit_ctx, sizeof(vcpu->exit_ctx));
@@ -1148,6 +1162,8 @@ void whpx_destroy_vcpu(CPUState *cpu)
 /* Identical to i386 */
 void whpx_vcpu_kick(CPUState *cpu)
 {
+    /* XXX debugging */
+    printf("whpx_vcpu_kick\n");
     struct whpx_state *whpx = &whpx_global;
     whp_dispatch.WHvCancelRunVirtualProcessor(
         whpx->partition, cpu->cpu_index, 0);
@@ -1433,12 +1449,12 @@ static int whpx_accel_init(MachineState *ms)
      * be provided when the partition is set up, or else the partition
      * setup will fail.
      */
+    /*
     ic_param->GicV3Parameters.GicdBaseAddress = 0xffff0000;
     ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0xeff68000;
-    /*
+    */
     ic_param->GicV3Parameters.GicdBaseAddress = 0x0000000008000000ll;
     ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0x0000000008090000ll;
-    */
     ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
     ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
     ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
