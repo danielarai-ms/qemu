@@ -40,6 +40,7 @@ typedef enum WHPFunctionList {
   X(HRESULT, WHvCancelRunVirtualProcessor, (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, UINT32 Flags)) \
   X(HRESULT, WHvGetVirtualProcessorRegisters, (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, const WHV_REGISTER_NAME* RegisterNames, UINT32 RegisterCount, WHV_REGISTER_VALUE* RegisterValues)) \
   X(HRESULT, WHvSetVirtualProcessorRegisters, (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, const WHV_REGISTER_NAME* RegisterNames, UINT32 RegisterCount, const WHV_REGISTER_VALUE* RegisterValues)) \
+  X(HRESULT, WHvReadGpaRange, (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, WHV_GUEST_PHYSICAL_ADDRESS GuestAddress, WHV_ACCESS_GPA_CONTROLS Controls, PVOID Data, UINT32 DataSizeInBytes)) \
 
 /*
  * These are supplemental functions that may not be present

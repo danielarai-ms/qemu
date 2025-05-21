@@ -1064,7 +1064,16 @@ static int whpx_vcpu_run(CPUState *cpu)
         assert(cpu->interrupt_request == 0);
 
         /* XXX debug logging */
-        printf("Running virtual processor\n");
+        uint64_t pc = ARM_CPU(cpu)->env.pc;
+        uint32_t inst_bytes = 0;
+        WHV_ACCESS_GPA_CONTROLS c = {};
+        c.CacheType = WHvCacheTypeWriteBack;
+        c.InputVtl.AsUINT8 = 0;
+        hr = whp_dispatch.WHvReadGpaRange(whpx->partition, cpu->cpu_index, pc,
+                             c, &inst_bytes, 4);
+        assert(!FAILED(hr));
+        printf("Pc: %#016llx bytes: %#010x\n", pc, inst_bytes);
+
         hr = whp_dispatch.WHvRunVirtualProcessor(
             whpx->partition, cpu->cpu_index,
             &vcpu->exit_ctx, sizeof(vcpu->exit_ctx));
