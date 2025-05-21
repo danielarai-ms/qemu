@@ -96,6 +96,9 @@ static const WHV_REGISTER_NAME whpx_register_names[] = {
     WHvArm64RegisterTtbr0El1,
     WHvArm64RegisterTtbr1El1,
 
+    /* Exception vector base */
+    WHvArm64RegisterVbarEl1,
+
     /* Aarch64 floating point registers */
     WHvArm64RegisterQ0,
     WHvArm64RegisterQ1,
@@ -588,6 +591,9 @@ static void whpx_set_registers(CPUState *cpu, int level)
 
     /* TODO: Other MMU translation registers */
 
+    /* Exception vector base */
+    vcxt.values[idx++].Reg64 = env->cp15.vbar_ns;
+
     /* The 32 floating point registers are arranged in the same relative
      * order in QEMU and WHP.
      *
@@ -699,6 +705,9 @@ static void whpx_get_registers(CPUState *cpu)
     env->cp15.ttbr1_ns = vcxt.values[idx++].Reg64;
 
     /* TODO: Other MMU translation registers */
+
+    /* Exception vector base */
+    env->cp15.vbar_ns = vcxt.values[idx++].Reg64;
 
     /* The 32 floating point registers are arranged in the same relative
      * order in QEMU and WHP.
