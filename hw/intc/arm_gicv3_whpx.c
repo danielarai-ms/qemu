@@ -13,6 +13,14 @@
 #include "qom/object.h"
 #include "qemu/module.h"
 
+#ifdef DEBUG_GICV3_WHPX
+#define DPRINTF(fmt, ...) \
+    do { fprintf(stderr, "kvm_gicv3: " fmt, ## __VA_ARGS__); } while (0)
+#else
+#define DPRINTF(fmt, ...) \
+    do { } while (0)
+#endif
+
 #define TYPE_WHPX_ARM_GICV3 "whpx-arm-gicv3"
 typedef struct WHPXARMGICv3Class WHPXARMGICv3Class;
 /* This is reusing the GICv3State typedef from ARM_GICV3_ITS_COMMON */
@@ -24,6 +32,43 @@ struct WHPXARMGICv3Class {
     DeviceRealize parent_realize;
     ResettablePhases parent_phases;
     /* TODO: Do we need additional whpx-specific fields? */
+};
+
+static void whpx_arm_gicv3_get(GICv3State *s)
+{
+    /* TODO: Implement this function */
+    g_assert_not_reached();
+}
+
+static void whpx_arm_gicv3_put(GICv3State *s)
+{
+    /* TODO: Implement this function */
+    g_assert_not_reached();
+}
+
+static void whpx_arm_gicv3_reset_hold(Object *obj, ResetType type)
+{
+    GICv3State *s = ARM_GICV3_COMMON(obj);
+    WHPXARMGICv3Class *wgc = WHPX_ARM_GICV3_GET_CLASS(s);
+
+    DPRINTF("Reset\n");
+
+    if (wgc->parent_phases.hold) {
+        wgc->parent_phases.hold(obj, type);
+    }
+
+    if (s->migration_blocker) {
+        DPRINTF("Cannot put kernel gic state, no kernel interface\n");
+        return;
+    }
+
+    whpx_arm_gicv3_put(s);
+}
+
+static void whpx_arm_gicv3_realize(DeviceState *dev, Error **errp)
+{
+    /* TODO: Implement this function */
+    g_assert_not_reached();
 }
 
 static void whpx_arm_gicv3_class_init(ObjectClass *klass, const void *data)
