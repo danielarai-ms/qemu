@@ -218,7 +218,7 @@ struct AarchSyndromeDataAbort {
 };
 
 /* All of these copied from i386. */
-static bool whpx_allowed;
+bool whpx_allowed;
 static bool whp_dispatch_initialized;
 static HMODULE hWinHvPlatform;
 static uint32_t max_vcpu_index;
@@ -1505,20 +1505,10 @@ error:
     return ret;
 }
 
-int whpx_enabled(void)
-{
-    return whpx_allowed;
-}
-
 bool whpx_irqchip_in_platform(void)
 {
-
-    /*return true;*/
-    /* XXX debugging - pretend that the accelerator does not know how to
-     * emulate the interrupt controller. See if this makes things sort of
-     * work with the emulated interrupt controller.
-     */
-    return false;
+    /* When WHPX is enabled, at least GICv3 must be provided by WHP. */
+    return whpx_enabled();
 }
 
 static void whpx_accel_class_init(ObjectClass *oc, const void *data)

@@ -243,7 +243,7 @@ struct AccelCPUState {
     WHV_RUN_VP_EXIT_CONTEXT exit_ctx;
 };
 
-static bool whpx_allowed;
+bool whpx_allowed;
 static bool whp_dispatch_initialized;
 static HMODULE hWinHvPlatform, hWinHvEmulation;
 static uint32_t max_vcpu_index;
@@ -2691,7 +2691,6 @@ error:
 
 int whpx_enabled(void)
 {
-    /* WHPX on ARM always supports at least GIC v3. */
     return whpx_allowed;
 }
 

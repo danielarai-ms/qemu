@@ -16,19 +16,21 @@
 #define QEMU_WHPX_H
 
 #ifdef COMPILING_PER_TARGET
-
 #ifdef CONFIG_WHPX
-
-int whpx_enabled(void);
-bool whpx_irqchip_in_platform(void);
-
-#else /* CONFIG_WHPX */
-
-#define whpx_enabled() (0)
-#define whpx_irqchip_in_platform() (0)
-
+#define CONFIG_WHPX_IS_POSSIBLE
 #endif /* CONFIG_WHPX */
-
+#else /* COMPILING_PER_TARGET */
+#define CONFIG_WHPX_IS_POSSIBLE
 #endif /* COMPILING_PER_TARGET */
+
+#ifdef CONFIG_WHPX_IS_POSSIBLE
+extern bool whpx_allowed;
+
+#define whpx_enabled()             (whpx_allowed)
+#else /* CONFIG_WHPX_IS_POSSIBLE */
+#define whpx_enabled()             (0)
+#endif /* CONFIG_WHPX_IS_POSSIBLE */
+
+bool whpx_irqchip_in_platform(void);
 
 #endif /* QEMU_WHPX_H */
