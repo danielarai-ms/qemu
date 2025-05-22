@@ -9,9 +9,13 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/intc/arm_gicv3_common.h"
+#include "kvm_arm.h"
 #include "qom/object.h"
+#include "migration/blocker.h"
 #include "qemu/module.h"
+#include "target/arm/cpregs.h"
 
 #ifdef DEBUG_GICV3_WHPX
 #define DPRINTF(fmt, ...) \
@@ -33,6 +37,12 @@ struct WHPXARMGICv3Class {
     ResettablePhases parent_phases;
     /* TODO: Do we need additional whpx-specific fields? */
 };
+
+static void whpx_arm_gicv3_set_irq(void *opaque, int irq, int level)
+{
+    /* TODO: Implement this function */
+    g_assert_not_reached();
+}
 
 static void whpx_arm_gicv3_get(GICv3State *s)
 {
@@ -65,10 +75,91 @@ static void whpx_arm_gicv3_reset_hold(Object *obj, ResetType type)
     whpx_arm_gicv3_put(s);
 }
 
-static void whpx_arm_gicv3_realize(DeviceState *dev, Error **errp)
+static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     /* TODO: Implement this function */
     g_assert_not_reached();
+}
+
+/*
+ * CPU interface registers of GIC needs to be reset on CPU reset.
+ * For the calling arm_gicv3_icc_reset() on CPU reset, we register
+ * below ARMCPRegInfo. As we reset the whole cpu interface under single
+ * register reset, we define only one register of CPU interface instead
+ * of defining all the registers.
+ */
+static const ARMCPRegInfo gicv3_cpuif_reginfo[] = {
+    { .name = "ICC_CTLR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 12, .crm = 12, .opc2 = 4,
+      /*
+       * If ARM_CP_NOP is used, resetfn is not called,
+       * So ARM_CP_NO_RAW is appropriate type.
+       */
+      .type = ARM_CP_NO_RAW,
+      .access = PL1_RW,
+      .readfn = arm_cp_read_zero,
+      .writefn = arm_cp_write_ignore,
+      /*
+       * We hang the whole cpu interface reset routine off here
+       * rather than parcelling it out into one little function
+       * per register
+       */
+      .resetfn = arm_gicv3_icc_reset,
+    },
+};
+
+static void whpx_arm_gicv3_realize(DeviceState *dev, Error **errp)
+{
+    GICv3State *s = WHPX_ARM_GICV3(dev);
+    WHPXARMGICv3Class *wgc = WHPX_ARM_GICV3_GET_CLASS(s);
+    Error *local_err = NULL;
+    int i;
+
+    DPRINTF("whpx_arm_gicv3_realize\n");
+
+    wgc->parent_realize(dev, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    if (s->revision != 3) {
+        error_setg(errp, "unsupported GIC revision %d for WHP GIC",
+                   s->revision);
+    }
+
+    if (s->security_extn) {
+        error_setg(errp, "the WHP VGICv3 does not implement the "
+                   "security extensions");
+        return;
+    }
+
+    gicv3_init_irqs_and_mmio(s, whpx_arm_gicv3_set_irq, NULL);
+
+    for (i = 0; i < s->num_cpu; i++) {
+        ARMCPU *cpu = ARM_CPU(qemu_get_cpu(i));
+
+        define_arm_cp_regs(cpu, gicv3_cpuif_reginfo);
+    }
+
+    /* TODO: Does WHP support multiple redistributor regions? */
+    if (s->nb_redist_regions > 1) {
+        error_setg(errp, "Multiple VGICv3 redistributor regions are not "
+                   "supported by WHP");
+        error_append_hint(errp, "A maximum of %d VCPUs can be used",
+                          s->redist_region_count[0]);
+        return;
+    }
+
+    /* TODO:redist region setup */
+    /* TODO: GSI routing? */
+
+    /* TODO: Migration? */
+    error_setg(&s->migration_blocker, "WHPX does not support VGICv3 migration");
+    if (migrate_add_blocker(&s->migration_blocker, errp) < 0) {
+        return;
+    }
+    /* TODO: vm_change_state handler if VGIC_GRP_CTRL? */
 }
 
 static void whpx_arm_gicv3_class_init(ObjectClass *klass, const void *data)
