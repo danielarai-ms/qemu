@@ -663,10 +663,14 @@ const char *gicv3_class_name(void)
     if (kvm_irqchip_in_kernel()) {
         return "kvm-arm-gicv3";
     } else if (whpx_irqchip_in_platform()) {
-        g_assert_not_reached();
+        return "whpx-arm-gicv3";
     } else {
         if (kvm_enabled()) {
             error_report("Userspace GICv3 is not supported with KVM");
+            exit(1);
+        }
+        if (whpx_enabled()) {
+            error_report("Usercspace GICv3 is not supported with WHPX");
             exit(1);
         }
         return "arm-gicv3";
