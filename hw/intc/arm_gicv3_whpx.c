@@ -11,7 +11,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/intc/arm_gicv3_common.h"
-#include "kvm_arm.h"
+#include "target/arm/cpu.h"
 #include "qom/object.h"
 #include "migration/blocker.h"
 #include "qemu/module.h"
@@ -19,7 +19,7 @@
 
 #ifdef DEBUG_GICV3_WHPX
 #define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, "kvm_gicv3: " fmt, ## __VA_ARGS__); } while (0)
+    do { fprintf(stderr, "whpx_gicv3: " fmt, ## __VA_ARGS__); } while (0)
 #else
 #define DPRINTF(fmt, ...) \
     do { } while (0)
