@@ -166,7 +166,8 @@ const char *its_class_name(void)
     if (kvm_irqchip_in_kernel()) {
         return "arm-its-kvm";
     } else if (whpx_irqchip_in_platform()) {
-        return "arm-its-whpx";
+        /* TODO: Is this sufficient for disabling ITS? */
+        return NULL;
     } else {
         /* Software emulation based model */
         return "arm-gicv3-its";
