@@ -908,6 +908,8 @@ static int handle_gpa_exit(CPUState *cpu)
     WHV_REGISTER_NAME reg_names[REG_PAIR];
     HRESULT hr;
 
+    /* TODO: locking like the MSHV implementation */
+
     /* XXX debugging */
     //static uint64_t last_pc;
     //bool should_log = (last_pc != access_info->Header.Pc);
@@ -965,6 +967,9 @@ static int handle_gpa_exit(CPUState *cpu)
         reg_names[1] = WHvArm64RegisterPc;
 
         if (da_syndrome.wnr) {
+            uint8_t data[8];
+            uint64_t val;
+
             /* wnr=1 means write to memory */
             /* Get register contents from WHP */
             hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
@@ -978,12 +983,16 @@ static int handle_gpa_exit(CPUState *cpu)
                              reg_names[0]);
                 return -1;
             }
+
+            val = cpu_to_le64(regs[0].Reg64);
+            memcpy(data, &val, sizeof(val));
+
             /* TODO: This function doesn't have a return value. That may mean
              * that we need to track physically-not-present memory and
              * handle it ourselves? Or does this function work if the address
              * is unbacked?
              */
-            cpu_physical_memory_write(data_addr, &regs[0].Reg64, data_len);
+            cpu_physical_memory_write(data_addr, data, data_len);
 
             /* Update Pc */
             hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
@@ -997,6 +1006,8 @@ static int handle_gpa_exit(CPUState *cpu)
                 return -1;
             }
         } else {
+            uint8_t data[8] = { 0 };
+            uint64_t val;
             /* wnr=0 means read from memory */
 
             /* TODO: This function doesn't have a return value. That may mean
@@ -1004,8 +1015,12 @@ static int handle_gpa_exit(CPUState *cpu)
              * handle it ourselves? Or does this function return correct
              * data when a physically not present address is read?
              */
-            cpu_physical_memory_read(data_addr, &regs[0].Reg64, data_len);
-            regs[0].Reg64 = mask_value(regs[0].Reg64, data_len, da_syndrome.sse);
+            assert(data_len < 8);
+            cpu_physical_memory_read(data_addr, &data, data_len);
+            memcpy(&val, data, sizeof (val));
+            val = le64_to_cpu(val);
+
+            regs[0].Reg64 = mask_value(val, data_len, da_syndrome.sse);
 
             assert(int_hdr->InstructionLength == 2 ||
                    int_hdr->InstructionLength == 4);
