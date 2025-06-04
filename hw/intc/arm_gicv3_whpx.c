@@ -78,8 +78,10 @@ static void whpx_arm_gicv3_reset_hold(Object *obj, ResetType type)
 
 static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
 {
-    /* TODO: Implement this function */
-    g_assert_not_reached();
+    /* TODO: Maybe we don't need to register this function if it doesn't
+     * need to do anything?
+     */
+    DPRINTF("GICV3 ICC reset (NOP)\n");
 }
 
 /*
