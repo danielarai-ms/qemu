@@ -714,7 +714,7 @@ static void create_its(VirtMachineState *vms)
     const char *itsclass = its_class_name();
     DeviceState *dev;
 
-    if (!strcmp(itsclass, "arm-gicv3-its")) {
+    if (itsclass && !strcmp(itsclass, "arm-gicv3-its")) {
         if (!vms->tcg_its) {
             itsclass = NULL;
         }
