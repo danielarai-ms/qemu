@@ -232,6 +232,27 @@ static bool force_cpu_sync = true;
 struct whpx_state whpx_global;
 struct WHPDispatch whp_dispatch;
 
+void whpx_arm_set_irq(uint32_t vector, uint64_t destination, int level)
+{
+    struct whpx_state *whpx = &whpx_global;
+    HRESULT hr;
+
+    WHV_INTERRUPT_CONTROL irq_control = {};
+
+    /* This is the only currently implemented interrupt type. */
+    irq_control.InterruptControl.InterruptType = WHvArm64InterruptTypeFixed;
+    irq_control.InterruptControl.Asserted = !!level;
+    irq_control.TargetVtl = 0;
+
+    irq_control.RequestedVector = vector;
+    irq_control.DestinationAddress = destination;
+
+    hr = whp_dispatch.WHvRequestInterrupt(whpx->partition, &irq_control,
+                                          sizeof (WHV_INTERRUPT_CONTROL));
+    /* TODO: How to handle errors on this call? */
+    assert(!FAILED(hr));
+}
+
 /* XXX debug only - do not merge */
 static void dump_syndrome(struct AarchSyndromeDataAbort syndrome)
 {
