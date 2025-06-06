@@ -52,6 +52,8 @@ typedef enum WHPFunctionList {
   X(HRESULT, WHvGetVirtualProcessorRegisters, (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, const WHV_REGISTER_NAME* RegisterNames, UINT32 RegisterCount, WHV_REGISTER_VALUE* RegisterValues)) \
   X(HRESULT, WHvSetVirtualProcessorRegisters, (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, const WHV_REGISTER_NAME* RegisterNames, UINT32 RegisterCount, const WHV_REGISTER_VALUE* RegisterValues)) \
   X(HRESULT, WHvReadGpaRange, (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, WHV_GUEST_PHYSICAL_ADDRESS GuestAddress, WHV_ACCESS_GPA_CONTROLS Controls, PVOID Data, UINT32 DataSizeInBytes)) \
+  X(HRESULT, WHvRequestInterrupt, (WHV_PARTITION_HANDLE Partition, \
+        WHV_INTERRUPT_CONTROL* Interrupt, UINT32 InterruptControlSize)) \
 
 /*
  * These are supplemental functions that may not be present
@@ -59,8 +61,6 @@ typedef enum WHPFunctionList {
  */
 #define LIST_WINHVPLATFORM_FUNCTIONS_SUPPLEMENTAL(X) \
   X(HRESULT, WHvSuspendPartitionTime, (WHV_PARTITION_HANDLE Partition)) \
-  X(HRESULT, WHvRequestInterrupt, (WHV_PARTITION_HANDLE Partition, \
-        WHV_INTERRUPT_CONTROL* Interrupt, UINT32 InterruptControlSize)) \
   X(HRESULT, WHvGetVirtualProcessorInterruptControllerState2, \
         (WHV_PARTITION_HANDLE Partition, UINT32 VpIndex, PVOID State, \
          UINT32 StateSize, UINT32* WrittenSize)) \
