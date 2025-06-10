@@ -34,6 +34,10 @@
 #define SAS_WORD       2
 #define SAS_DOUBLEWORD 3
 
+#define VERBOSE_CPU_DEBUGGING 0
+#define VERBOSE_MMIO_DEBUGGING 0
+#define VERBOSE_RUN_LOGGING 0
+
 /*
  * The register layout roughly follows the layout of CPUARMState and
  * not necessarily the order of the WHP definitions.
@@ -266,6 +270,7 @@ static void dump_syndrome(struct AarchSyndromeDataAbort syndrome)
 /* XXX debug only - do not merge */
 static void dump_cpu(CPUState *cpu, const char *label)
 {
+#if VERBOSE_CPU_DEBUGGING
     uint32_t pstate;
     CPUARMState *env = &ARM_CPU(cpu)->env;
 
@@ -336,6 +341,7 @@ static void dump_cpu(CPUState *cpu, const char *label)
         pstate = cpsr_read(env);
     }
     printf("%16s: %#16llx\n", "pstate", (uint64_t) pstate);
+#endif
 }
 
 /*
@@ -933,8 +939,7 @@ static int handle_gpa_exit(CPUState *cpu)
 
     /* XXX debugging */
     //static uint64_t last_pc;
-    //bool should_log = (last_pc != access_info->Header.Pc);
-    bool should_log = true;
+    bool should_log = VERBOSE_MMIO_DEBUGGING;
     //last_pc = access_info->Header.Pc;
 
     gen_syndrome.as_uint32 = (uint32_t) access_info->Syndrome;
@@ -1110,6 +1115,8 @@ static int whpx_vcpu_run(CPUState *cpu)
         assert(cpu->interrupt_request == 0);
 
         /* XXX debug logging */
+#if VERBOSE_RUN_LOGGING
+        /* XXX - should read PC from VP instead of from QEMU here */
         uint64_t pc = ARM_CPU(cpu)->env.pc;
         uint32_t inst_bytes = 0;
         WHV_ACCESS_GPA_CONTROLS c = {};
@@ -1119,6 +1126,7 @@ static int whpx_vcpu_run(CPUState *cpu)
                              c, &inst_bytes, 4);
         assert(!FAILED(hr));
         printf("Pc: %#016llx bytes: %#010x\n", pc, inst_bytes);
+#endif
 
         hr = whp_dispatch.WHvRunVirtualProcessor(
             whpx->partition, cpu->cpu_index,
@@ -1218,7 +1226,7 @@ void whpx_destroy_vcpu(CPUState *cpu)
 void whpx_vcpu_kick(CPUState *cpu)
 {
     /* XXX debugging */
-    printf("whpx_vcpu_kick\n");
+    //printf("whpx_vcpu_kick\n");
     struct whpx_state *whpx = &whpx_global;
     whp_dispatch.WHvCancelRunVirtualProcessor(
         whpx->partition, cpu->cpu_index, 0);

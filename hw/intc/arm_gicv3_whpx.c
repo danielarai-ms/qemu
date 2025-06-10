@@ -17,6 +17,7 @@
 #include "migration/blocker.h"
 #include "qemu/module.h"
 #include "target/arm/cpregs.h"
+#include "target/arm/whpx-internal.h"
 
 #ifdef DEBUG_GICV3_WHPX
 #define DPRINTF(fmt, ...) \
@@ -41,8 +42,43 @@ struct WHPXARMGICv3Class {
 
 static void whpx_arm_gicv3_set_irq(void *opaque, int irq, int level)
 {
-    /* TODO: Implement this function */
-    g_assert_not_reached();
+    GICv3State *s = (GICv3State *) opaque;
+    uint32_t num_external_irq = s->num_irq;
+    /* Meaning of the 'irq' parameter:
+     *  [0..N-1] : SPI (device) interrupts
+     *  [N..N+31] : SGI/PPI (internal) interrupts for CPU 0
+     *  [N+32..N+63] : SGI/PPI (internal) interrupts for CPU 1
+     *  ...
+     * Convert this to WHP's desired encoding. Architecturally, SGIs are
+     * numbered 0-15 and PPIs are numbered 16-31. The SGIs and PPIs are banked
+     * per CPU. SPIs are numbered 32-1019 and additionally 4096-5119 (if
+     * supported by the GIC). WHP wants different encodings for SPIs and
+     * SGIs/PPIs.
+     */
+    uint32_t vector;
+    uint32_t destination;
+
+    assert(num_external_irq > GIC_INTERNAL);
+
+    if (irq < (num_external_irq - GIC_INTERNAL)) {
+        /* SPI. The architectural interrupt number (32-1019) goes in
+         * vector, and destination must be 0. IRQ routing will be performed
+         * according to VM configuration (including GIC state).
+         */
+        uint32_t arch_irq = irq + GIC_INTERNAL;
+        printf("whpx_arm_gicv3_set_irq %d level %d\n", arch_irq, level);
+        vector = arch_irq;
+        destination = 0;
+    } else {
+        int banked_irq = irq - (num_external_irq - GIC_INTERNAL);
+        int cpu = irq / GIC_INTERNAL;
+
+        printf("whpx_arm_gicv3_set_irq unsupported irq %d for cpu %d level %d\n",
+               banked_irq, cpu, level);
+        /* TODO: values for vector and destination are TBD */
+        g_assert_not_reached();
+    }
+    whpx_arm_set_irq(vector, destination, level);
 }
 
 static void whpx_arm_gicv3_get(GICv3State *s)

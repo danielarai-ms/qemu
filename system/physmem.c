@@ -3120,13 +3120,6 @@ MemTxResult address_space_read_full(AddressSpace *as, hwaddr addr,
         result = flatview_read(fv, addr, attrs, buf, len);
     }
 
-    /* XXX debugging - do not merge */
-    uint64_t data = 0;
-    memcpy(&data, buf, MIN(len, 8));
-
-    printf("physmem read  %#llx len %#llx data %#llx\n", addr, len,
-           data);
-
     return result;
 }
 
