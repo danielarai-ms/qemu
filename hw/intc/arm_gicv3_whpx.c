@@ -66,7 +66,7 @@ static void whpx_arm_gicv3_set_irq(void *opaque, int irq, int level)
          * according to VM configuration (including GIC state).
          */
         uint32_t arch_irq = irq + GIC_INTERNAL;
-        printf("whpx_arm_gicv3_set_irq %d level %d\n", arch_irq, level);
+        DPRINTF("whpx_arm_gicv3_set_irq %d level %d\n", arch_irq, level);
         vector = arch_irq;
         destination = 0;
     } else {
