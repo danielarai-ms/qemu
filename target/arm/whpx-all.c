@@ -546,7 +546,8 @@ void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
          */
         cpu->host_cpu_probe_failed = true;
     }
-
+    /* TODO: Is this the correct psci version to expose for WHP? */
+    cpu->psci_version = QEMU_PSCI_VERSION_0_2;
 }
 
 /* Partially derived from i386 */
