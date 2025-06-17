@@ -988,7 +988,7 @@ static int handle_gpa_exit(CPUState *cpu)
         memset(&regs, 0, sizeof (WHV_REGISTER_VALUE) * REG_PAIR);
         reg_names[0] = WHvArm64RegisterX0 + da_syndrome.srt;
         assert(reg_names[0] >= WHvArm64RegisterX0 &&
-               reg_names[0] <= WHvArm64RegisterLr);
+               reg_names[0] <= WHvArm64RegisterSp);
 
         regs[1].Reg64 = int_hdr->Pc + int_hdr->InstructionLength;
         reg_names[1] = WHvArm64RegisterPc;
