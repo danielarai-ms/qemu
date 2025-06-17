@@ -1285,11 +1285,24 @@ static void whpx_process_section(MemoryRegionSection *section, int add)
     unsigned int delta;
     uint64_t host_va;
 
-    if (!memory_region_is_ram(mr) && !memory_region_is_romd(mr)) {
-        /* XXX  - debugging - just to find out where regions are */
-        printf("WHPX: HID PA:%p Size:%p, '%s'\n",
-               (void*)start_pa, (void*)size, mr->name);
-        return;
+    /* XXX  - debugging - just to find out where regions are */
+    printf("WHPX: HID PA:%p Size:%p, '%s'\n",
+           (void*)start_pa, (void*)size, mr->name);
+    printf("(ram %d) (readonly %d) (nonvolatile %d) (rom_device %d)\n",
+           mr->ram, mr->readonly, mr->nonvolatile, mr->rom_device);
+
+    /* XXX It seems like the UEFI ROM region needs to be memory mapped, but
+     * the UEFI data region should be unmapped and used as a device.
+     * At least with the command line I'm using, both the ROM and data show
+     * up with the same properties except for name. So for now, use the name
+     * to decide what rules should be used to map the region. Possibly the
+     * correct solution here is to get the ROM to show up as read-only RAM
+     * somehow?
+     */
+    if (strcmp(mr->name, "virt.flash0")) {
+        if (!memory_region_is_ram(mr)) {
+            return;
+        }
     }
 
     delta = qemu_real_host_page_size() - (start_pa & ~qemu_real_host_page_mask());
