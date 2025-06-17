@@ -3144,7 +3144,6 @@ MemTxResult address_space_write(AddressSpace *as, hwaddr addr,
     printf("physmem write %#llx len %#llx data %#llx\n", addr, len,
            data);
     */
-
     return result;
 }
 

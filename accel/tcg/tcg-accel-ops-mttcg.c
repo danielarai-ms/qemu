@@ -91,7 +91,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
 
     do {
         /* XXX debugging */
-        printf("mttcg_cpu_thread_fn main loop\n");
+        /*printf("mttcg_cpu_thread_fn main loop\n");*/
         cpu_debug_cpu(cpu);
         if (cpu_can_run(cpu)) {
             int r;
