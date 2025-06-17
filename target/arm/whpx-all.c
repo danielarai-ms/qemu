@@ -1042,7 +1042,7 @@ static int handle_gpa_exit(CPUState *cpu)
              * handle it ourselves? Or does this function return correct
              * data when a physically not present address is read?
              */
-            assert(data_len < 8);
+            assert(data_len <= 8);
             cpu_physical_memory_read(data_addr, &data, data_len);
             memcpy(&val, data, sizeof (val));
             val = le64_to_cpu(val);
