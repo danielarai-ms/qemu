@@ -19,6 +19,9 @@
 #include "target/arm/cpregs.h"
 #include "target/arm/whpx-internal.h"
 
+/* TODO: Fix up debug logging */
+#if 0
+
 #ifdef DEBUG_GICV3_WHPX
 #define DPRINTF(fmt, ...) \
     do { fprintf(stderr, "whpx_gicv3: " fmt, ## __VA_ARGS__); } while (0)
@@ -26,6 +29,15 @@
 #define DPRINTF(fmt, ...) \
     do { } while (0)
 #endif
+
+#endif // if 0
+
+static bool arm_gicv3_whpx_debug;
+
+#define DPRINTF(fmt, ...) \
+    do { if (arm_gicv3_whpx_debug) { \
+        fprintf(stderr, "whpx_gicv3: " fmt, ## __VA_ARGS__); \
+    } } while (0)
 
 #define TYPE_WHPX_ARM_GICV3 "whpx-arm-gicv3"
 typedef struct WHPXARMGICv3Class WHPXARMGICv3Class;
@@ -207,6 +219,11 @@ static void whpx_arm_gicv3_class_init(ObjectClass *klass, const void *data)
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     ARMGICv3CommonClass *agcc = ARM_GICV3_COMMON_CLASS(klass);
     WHPXARMGICv3Class *wgc = WHPX_ARM_GICV3_CLASS(klass);
+
+    /* TODO: Real logging support */
+    if (getenv("WHPX_GIC_DEBUG") != NULL) {
+        arm_gicv3_whpx_debug = true;
+    }
 
     agcc->pre_save = whpx_arm_gicv3_get;
     agcc->post_load = whpx_arm_gicv3_put;
