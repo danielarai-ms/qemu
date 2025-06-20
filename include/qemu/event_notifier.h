@@ -18,7 +18,9 @@
 #include <windows.h>
 #endif
 
+/* XXX debugging added */
 struct EventNotifier {
+    const char *name;
 #ifdef _WIN32
     HANDLE event;
 #else

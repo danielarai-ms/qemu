@@ -269,6 +269,9 @@ static bool aio_dispatch_handlers(AioContext *ctx, HANDLE event)
             (revents || event_notifier_get_handle(node->e) == event) &&
             node->io_notify) {
             node->pfd.revents = 0;
+            if (node->e->name != NULL && !strcmp(node->e->name, "virtio-net")) {
+                printf("aio_dispatch_handlers for %s\n", node->e->name);
+            }
             node->io_notify(node->e);
 
             /* aio_notify() does not count as progress */

@@ -2471,8 +2471,17 @@ void virtio_queue_set_shadow_avail_idx(VirtQueue *vq, uint16_t shadow_avail_idx)
     }
 }
 
-static void virtio_queue_notify_vq(VirtQueue *vq)
+// XXX debugging added
+static void virtio_queue_notify_vq(VirtQueue *vq, const char *caller)
 {
+    const char *dev_name = "unknown";
+    if (vq->vdev != NULL && vq->vdev->name != NULL) {
+        dev_name = vq->vdev->name;
+    }
+    if (strcmp(dev_name, "virtio-blk")) {
+        printf("virtio_queue_notify_vq %s from %s\n", dev_name, caller);
+    }
+
     if (vq->vring.desc && vq->handle_output) {
         VirtIODevice *vdev = vq->vdev;
 
@@ -2491,6 +2500,12 @@ static void virtio_queue_notify_vq(VirtQueue *vq)
 
 void virtio_queue_notify(VirtIODevice *vdev, int n)
 {
+    const char *dev_name = "unknown";
+    if (vdev->name != NULL) {
+        dev_name = vdev->name;
+    }
+    printf("virtio_queue_notify %s\n", dev_name);
+
     VirtQueue *vq = &vdev->vq[n];
 
     if (unlikely(!vq->vring.desc || vdev->broken)) {
@@ -3778,7 +3793,7 @@ static void virtio_queue_host_notifier_aio_poll_ready(EventNotifier *n)
 {
     VirtQueue *vq = container_of(n, VirtQueue, host_notifier);
 
-    virtio_queue_notify_vq(vq);
+    virtio_queue_notify_vq(vq, "aio_poll_ready");
 }
 
 static void virtio_queue_host_notifier_aio_poll_end(EventNotifier *n)
@@ -3800,6 +3815,14 @@ void virtio_queue_aio_attach_host_notifier(VirtQueue *vq, AioContext *ctx)
      */
     if (!virtio_queue_get_notification(vq)) {
         virtio_queue_set_notification(vq, 1);
+    }
+
+    /* XXX logging */
+    if (vq->vdev != NULL && vq->vdev->name != NULL) {
+        printf("XXXXXXXXXX vdev name %s\n", vq->vdev->name);
+        vq->host_notifier.name = vq->vdev->name;
+    } else {
+        printf("XXXXXXXXXX no vdev name\n");
     }
 
     aio_set_event_notifier(ctx, &vq->host_notifier,
@@ -3829,6 +3852,14 @@ void virtio_queue_aio_attach_host_notifier_no_poll(VirtQueue *vq, AioContext *ct
     /* See virtio_queue_aio_attach_host_notifier() */
     if (!virtio_queue_get_notification(vq)) {
         virtio_queue_set_notification(vq, 1);
+    }
+
+    /* XXX logging */
+    if (vq->vdev != NULL && vq->vdev->name != NULL) {
+        printf("XXXXXXXXXX vdev name %s\n", vq->vdev->name);
+        vq->host_notifier.name = vq->vdev->name;
+    } else {
+        printf("XXXXXXXXXX no vdev name\n");
     }
 
     aio_set_event_notifier(ctx, &vq->host_notifier,
@@ -3864,7 +3895,7 @@ void virtio_queue_host_notifier_read(EventNotifier *n)
 {
     VirtQueue *vq = container_of(n, VirtQueue, host_notifier);
     if (event_notifier_test_and_clear(n)) {
-        virtio_queue_notify_vq(vq);
+        virtio_queue_notify_vq(vq, "notifier_read");
     }
 }
 
@@ -4037,6 +4068,13 @@ static int virtio_device_start_ioeventfd_impl(VirtIODevice *vdev)
         if (r < 0) {
             err = r;
             goto assign_error;
+        }
+        /* XXX logging */
+        if (vq->vdev != NULL && vq->vdev->name != NULL) {
+            printf("XXXXXXXXXX vdev name %s\n", vq->vdev->name);
+            vq->host_notifier.name = vq->vdev->name;
+        } else {
+            printf("XXXXXXXXXX no vdev name\n");
         }
         event_notifier_set_handler(&vq->host_notifier,
                                    virtio_queue_host_notifier_read);

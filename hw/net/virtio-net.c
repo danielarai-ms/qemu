@@ -2855,6 +2855,9 @@ static void virtio_net_handle_tx_bh(VirtIODevice *vdev, VirtQueue *vq)
     VirtIONet *n = VIRTIO_NET(vdev);
     VirtIONetQueue *q = &n->vqs[vq2q(virtio_get_queue_index(vq))];
 
+    /* XXX logging */
+    printf("virtio_net_handle_tx_bh\n");
+
     if (unlikely(n->vhost_started)) {
         return;
     }
