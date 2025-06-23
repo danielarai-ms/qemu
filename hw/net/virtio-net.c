@@ -389,6 +389,9 @@ static void virtio_net_set_status(struct VirtIODevice *vdev, uint8_t status)
     int i;
     uint8_t queue_status;
 
+    /* XXX logging */
+    printf("XXX virtio_net_set_status for %s: %d\n", vdev->name, status);
+
     virtio_net_vnet_endian_status(n, status);
     virtio_net_vhost_status(n, status);
 
@@ -410,14 +413,17 @@ static void virtio_net_set_status(struct VirtIODevice *vdev, uint8_t status)
         }
 
         if (!q->tx_waiting) {
+            printf("XXX virtio_net_set_status not tx_waiting, no bh\n");
             continue;
         }
 
         if (queue_started) {
             if (q->tx_timer) {
+                printf("XXX virtio_net_set_status modifying timer\n");
                 timer_mod(q->tx_timer,
                                qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + n->tx_timeout);
             } else {
+                printf("XXX virtio_net_set_status scheduling bh for queue started\n");
                 replay_bh_schedule_event(q->tx_bh);
             }
         } else {
@@ -432,8 +438,11 @@ static void virtio_net_set_status(struct VirtIODevice *vdev, uint8_t status)
                 /* if tx is waiting we are likely have some packets in tx queue
                  * and disabled notification */
                 q->tx_waiting = 0;
+                printf("XXX virtio_net_set_status setting notification\n");
                 virtio_queue_set_notification(q->tx_vq, 1);
                 virtio_net_drop_tx_queue_data(vdev, q->tx_vq);
+            } else {
+                printf("XXX virtio_net_set_status not setting notification\n");
             }
         }
     }
@@ -2691,6 +2700,9 @@ static void virtio_net_tx_complete(NetClientState *nc, ssize_t len)
     VirtIODevice *vdev = VIRTIO_DEVICE(n);
     int ret;
 
+    /* XXX logging */
+    printf("XXX virtio_net_tx_complete len %d\n", (int)len);
+
     virtqueue_push(q->tx_vq, q->async_tx.elem, 0);
     virtio_notify(vdev, q->tx_vq);
 
@@ -2725,10 +2737,13 @@ static int32_t virtio_net_flush_tx(VirtIONetQueue *q)
     int32_t num_packets = 0;
     int queue_index = vq2q(virtio_get_queue_index(q->tx_vq));
     if (!(vdev->status & VIRTIO_CONFIG_S_DRIVER_OK)) {
+        printf("XXX virtio_net_flush_tx driver not OK\n");
         return num_packets;
     }
 
     if (q->async_tx.elem) {
+        printf("XXX virtio_net_flush_tx Setting notification and returning %d\n",
+               num_packets);
         virtio_queue_set_notification(q->tx_vq, 0);
         return num_packets;
     }
@@ -2856,23 +2871,31 @@ static void virtio_net_handle_tx_bh(VirtIODevice *vdev, VirtQueue *vq)
     VirtIONetQueue *q = &n->vqs[vq2q(virtio_get_queue_index(vq))];
 
     /* XXX logging */
-    printf("virtio_net_handle_tx_bh\n");
+    printf("XXX virtio_net_handle_tx_bh\n");
 
     if (unlikely(n->vhost_started)) {
+        /* XXX logging */
+        printf("XXX virtio_net_handle_tx_bh vhost not started\n");
         return;
     }
 
     if (unlikely((n->status & VIRTIO_NET_S_LINK_UP) == 0)) {
+        /* XXX logging */
+        printf("XXX virtio_net_handle_tx_bh link not up\n");
         virtio_net_drop_tx_queue_data(vdev, vq);
         return;
     }
 
     if (unlikely(q->tx_waiting)) {
+        /* XXX logging */
+        printf("XXX virtio_net_handle_tx_bh tx_waiting already set\n");
         return;
     }
     q->tx_waiting = 1;
     /* This happens when device was stopped but VCPU wasn't. */
     if (!vdev->vm_running) {
+        /* XXX logging */
+        printf("XXX virtio_net_handle_tx_bh vm_running is false\n");
         return;
     }
     virtio_queue_set_notification(vq, 0);
@@ -2950,10 +2973,15 @@ static void virtio_net_tx_bh(void *opaque)
         return;
     }
 
+    /* XXX logging */
+    printf("XXX calling virtio_net_flush_tx()\n");
     ret = virtio_net_flush_tx(q);
     if (ret == -EBUSY || ret == -EINVAL) {
         return; /* Notification re-enable handled by tx_complete or device
                  * broken */
+    }
+    if (ret > 0) {
+        printf("XXX flushed %d packets\n", ret);
     }
 
     /* If we flush a full burst of packets, assume there are

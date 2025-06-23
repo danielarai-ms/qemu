@@ -70,6 +70,12 @@ static void whpx_arm_gicv3_set_irq(void *opaque, int irq, int level)
     uint32_t vector;
     uint32_t destination;
 
+    /* XXX logging */
+    /* Unclear which of these numbers is correct */
+    if (irq == 46 || irq == 36) {
+        printf("XXX whpx_arm_gicv3_set_irq %d: %d\n", irq, level);
+    }
+
     assert(num_external_irq > GIC_INTERNAL);
 
     if (irq < (num_external_irq - GIC_INTERNAL)) {

@@ -962,13 +962,24 @@ static int handle_gpa_exit(CPUState *cpu)
             printf("Intercept header len %d, access_type %d, Pc %016llx\n",
                    int_hdr->InstructionLength, int_hdr->InterceptAccessType,
                    int_hdr->Pc);
-            printf("Unmapped GPA: len %d inst %#010x info %#04x GPA %#018llx GVA %#018llx syndrome %#010x\n",
+            printf("Unmapped GPA: len %d inst %#010x info %#04x GPA %#018llx GVA %#018llx syndrome %#010x read %d\n",
                    access_info->AccessInfo.AsUINT8,
                    access_info->InstructionByteCount,
                    *(uint32_t*) access_info->InstructionBytes,
                    access_info->Gpa, access_info->Gva,
-                   da_syndrome.as_uint32);
+                   da_syndrome.as_uint32, da_syndrome.wnr);
         }
+
+        if (access_info->Gpa >= 0x0000008000000000ll &&
+            access_info->Gpa < 0x0000008000004000ll) {
+        printf("XXX MMIO access to vnet: len %d inst %#010x info %#04x GPA %#018llx GVA %#018llx syndrome %#010x read %d\n",
+               access_info->AccessInfo.AsUINT8,
+               access_info->InstructionByteCount,
+               *(uint32_t*) access_info->InstructionBytes,
+               access_info->Gpa, access_info->Gva,
+               da_syndrome.as_uint32, da_syndrome.wnr);
+        }
+
 
         /* TODO: Handle situations where the instruction syndrome info is
          * not valid
