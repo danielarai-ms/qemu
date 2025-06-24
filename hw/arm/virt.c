@@ -1911,6 +1911,9 @@ static VirtGICType finalize_gic_version_do(const char *accel_name,
                                            int gics_supported,
                                            unsigned int max_cpus)
 {
+    /* XXX logging */
+    printf("XXX Final gics supported mask 0x%x\n", gics_supported);
+
     /* Convert host/max/nosel to GIC version number */
     switch (gic_version) {
     case VIRT_GIC_VERSION_HOST:

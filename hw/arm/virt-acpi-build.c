@@ -741,6 +741,9 @@ build_madt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
                                           memmap[VIRT_HIGH_GIC_REDIST2].size);
         }
 
+        /* XXX logging */
+        printf("XXX GIC version greater than 2\n");
+
         if (its_class_name() && !vmc->no_its) {
             /*
              * ACPI spec, Revision 6.0 Errata A
@@ -754,8 +757,30 @@ build_madt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
             /* Physical Base Address */
             build_append_int_noprefix(table_data, memmap[VIRT_GIC_ITS].base, 8);
             build_append_int_noprefix(table_data, 0, 4);    /* Reserved */
+            printf("XXX Configuring ITS\n");
+        } else {
+#if 0
+            /* XXX experiment - try setting up GIC_V2M with GICv3 when there
+             * is no ITS.
+             */
+            const uint16_t spi_base = vms->irqmap[VIRT_GIC_V2M] + ARM_SPI_BASE;
+
+            /* 5.2.12.16 GIC MSI Frame Structure */
+            build_append_int_noprefix(table_data, 0xD, 1);  /* Type */
+            build_append_int_noprefix(table_data, 24, 1);   /* Length */
+            build_append_int_noprefix(table_data, 0, 2);    /* Reserved */
+            build_append_int_noprefix(table_data, 0, 4);    /* GIC MSI Frame ID */
+            /* Physical Base Address */
+            build_append_int_noprefix(table_data, memmap[VIRT_GIC_V2M].base, 8);
+            build_append_int_noprefix(table_data, 1, 4);    /* Flags */
+            /* SPI Count */
+            build_append_int_noprefix(table_data, NUM_GICV2M_SPIS, 2);
+            build_append_int_noprefix(table_data, spi_base, 2); /* SPI Base */
+#endif
         }
     } else {
+        /* XXX logging */
+        printf("XXX GIC version <= 2. Configuring GIC_V2M\n");
         const uint16_t spi_base = vms->irqmap[VIRT_GIC_V2M] + ARM_SPI_BASE;
 
         /* 5.2.12.16 GIC MSI Frame Structure */
