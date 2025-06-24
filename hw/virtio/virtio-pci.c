@@ -1031,7 +1031,7 @@ static void virtio_pci_one_vector_mask(VirtIOPCIProxy *proxy,
 
     /* If guest supports masking, keep irqfd but mask it.
      * Otherwise, clean it up now.
-     */
+     */ 
     if (vdev->use_guest_notifier_mask && k->guest_notifier_mask) {
         k->guest_notifier_mask(vdev, queue_no, true);
     } else {
@@ -1562,10 +1562,6 @@ static uint64_t virtio_pci_common_read(void *opaque, hwaddr addr,
         val = 0;
     }
 
-    /* XXX logging */
-    printf("XXX virtio_pci_common_read %s addr 0x%llx val 0x%x\n",
-           vdev->name, addr, val);
-
     return val;
 }
 
@@ -1579,10 +1575,6 @@ static void virtio_pci_common_write(void *opaque, hwaddr addr,
     if (vdev == NULL) {
         return;
     }
-
-    /* XXX logging */
-    printf("XXX virtio_pci_common_write %s addr 0x%llx val 0x%llx\n",
-           vdev->name, addr, val);
 
     switch (addr) {
     case VIRTIO_PCI_COMMON_DFSELECT:
@@ -1712,11 +1704,6 @@ static uint64_t virtio_pci_notify_read(void *opaque, hwaddr addr,
         return UINT64_MAX;
     }
 
-    /* XXX logging */
-    VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
-    printf("XXX virtio_pci_notify_read %s addr 0x%llx val 0x%x\n",
-           vdev->name, addr, 0);
-
     return 0;
 }
 
@@ -1743,10 +1730,6 @@ static void virtio_pci_notify_write_pio(void *opaque, hwaddr addr,
     unsigned queue = val;
 
     if (vdev != NULL && queue < VIRTIO_QUEUE_MAX) {
-        /* XXX logging */
-        printf("XXX virtio_pci_notify_write %s addr 0x%llx val 0x%llx\n",
-               vdev->name, addr, val);
-
         trace_virtio_pci_notify_write_pio(addr, val, size);
         virtio_queue_notify(vdev, queue);
     }
@@ -1765,23 +1748,12 @@ static uint64_t virtio_pci_isr_read(void *opaque, hwaddr addr,
 
     val = qatomic_xchg(&vdev->isr, 0);
     pci_irq_deassert(&proxy->pci_dev);
-
-    /* XXX logging */
-    printf("XXX virtio_pci_isr_read %s addr 0x%llx val 0x%llx\n",
-           vdev->name, addr, val);
-
     return val;
 }
 
 static void virtio_pci_isr_write(void *opaque, hwaddr addr,
                                  uint64_t val, unsigned size)
 {
-    /* XXX logging */
-    VirtIOPCIProxy *proxy = opaque;
-    VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
-    printf("XXX virtio_pci_isr_write %s base addr 0x%llx val 0x%llx\n",
-           vdev->name, addr, val);
-
 }
 
 static uint64_t virtio_pci_device_read(void *opaque, hwaddr addr,
@@ -1809,12 +1781,6 @@ static uint64_t virtio_pci_device_read(void *opaque, hwaddr addr,
         val = 0;
         break;
     }
-
-    /* XXX logging */
-    printf("XXX virtio_pci_device_read %s addr 0x%llx val 0x%llx\n",
-           vdev->name, addr, val);
-
-
     return val;
 }
 
@@ -1827,10 +1793,6 @@ static void virtio_pci_device_write(void *opaque, hwaddr addr,
     if (vdev == NULL) {
         return;
     }
-
-    /* XXX logging */
-    printf("XXX virtio_pci_device_write %s base addr 0x%llx val 0x%llx\n",
-           vdev->name, addr, val);
 
     switch (size) {
     case 1:
@@ -2668,3 +2630,4 @@ static void virtio_pci_register_types(void)
 }
 
 type_init(virtio_pci_register_types)
+
