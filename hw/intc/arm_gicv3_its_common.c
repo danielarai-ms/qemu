@@ -169,9 +169,7 @@ const char *its_class_name(void)
         /* TODO: Is this sufficient for disabling ITS? */
         return NULL;
     } else {
-        /* XXX try forcing ITS off for emulation */
-        return NULL;
         /* Software emulation based model */
-        //return "arm-gicv3-its";
+        return "arm-gicv3-its";
     }
 }
