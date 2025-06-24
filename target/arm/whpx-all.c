@@ -38,6 +38,12 @@
 #define VERBOSE_MMIO_DEBUGGING 0
 #define VERBOSE_RUN_LOGGING 0
 
+/* In ARM64, the "zero register" is encoded as register number 31. When used
+ * as a source register, this always provides the value zero. This may not
+ * be implemented as an actual register in hardware.
+ */
+#define ARM_ZERO_REG_INDEX 31
+
 /*
  * The register layout roughly follows the layout of CPUARMState and
  * not necessarily the order of the WHP definitions.
@@ -78,7 +84,6 @@ static const WHV_REGISTER_NAME whpx_register_names[] = {
     WHvArm64RegisterFp,
     WHvArm64RegisterLr,
 
-    /* Aarc64 stack pointer (general purpose 31, sometimes) */
     WHvArm64RegisterSp,
 
     /* Aarch64 Program counter */
@@ -962,22 +967,12 @@ static int handle_gpa_exit(CPUState *cpu)
             printf("Intercept header len %d, access_type %d, Pc %016llx\n",
                    int_hdr->InstructionLength, int_hdr->InterceptAccessType,
                    int_hdr->Pc);
-            printf("Unmapped GPA: len %d inst %#010x info %#04x GPA %#018llx GVA %#018llx syndrome %#010x read %d\n",
+            printf("Unmapped GPA: len %d inst %#010x info %#04x GPA %#018llx GVA %#018llx syndrome %#010x write %d\n",
                    access_info->AccessInfo.AsUINT8,
                    access_info->InstructionByteCount,
                    *(uint32_t*) access_info->InstructionBytes,
                    access_info->Gpa, access_info->Gva,
                    da_syndrome.as_uint32, da_syndrome.wnr);
-        }
-
-        if (access_info->Gpa >= 0x0000008000000000ll &&
-            access_info->Gpa < 0x0000008000004000ll) {
-        printf("XXX MMIO access to vnet: len %d inst %#010x info %#04x GPA %#018llx GVA %#018llx syndrome %#010x read %d\n",
-               access_info->AccessInfo.AsUINT8,
-               access_info->InstructionByteCount,
-               *(uint32_t*) access_info->InstructionBytes,
-               access_info->Gpa, access_info->Gva,
-               da_syndrome.as_uint32, da_syndrome.wnr);
         }
 
 
@@ -997,33 +992,43 @@ static int handle_gpa_exit(CPUState *cpu)
         data_addr = access_info->Gpa;
 
         memset(&regs, 0, sizeof (WHV_REGISTER_VALUE) * REG_PAIR);
-        reg_names[0] = WHvArm64RegisterX0 + da_syndrome.srt;
-        assert(reg_names[0] >= WHvArm64RegisterX0 &&
-               reg_names[0] <= WHvArm64RegisterSp);
 
+        /* Set up register names and values for reading or writing the operand
+         * and PC registers as part of the MMIO instruction handling. If the
+         * data register is the zero register, that does not need to be read
+         * or written.
+         */
+        if (da_syndrome.srt != ARM_ZERO_REG_INDEX) {
+            reg_names[0] = WHvArm64RegisterX0 + da_syndrome.srt;
+            assert(reg_names[0] >= WHvArm64RegisterX0 &&
+                   reg_names[0] <= WHvArm64RegisterLr);
+        }
         regs[1].Reg64 = int_hdr->Pc + int_hdr->InstructionLength;
         reg_names[1] = WHvArm64RegisterPc;
 
         if (da_syndrome.wnr) {
-            uint8_t data[8];
+            /* We default data to 0 for the zero register case (register 31). */
+            uint8_t data[8] = {};
             uint64_t val;
 
             /* wnr=1 means write to memory */
-            /* Get register contents from WHP */
-            hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
-                whpx->partition,
-                cpu->cpu_index,
-                &reg_names[0],
-                1,
-                &regs[0]);
-            if (FAILED(hr)) {
-                error_report("WHPX: Failed to read virtual register %d\n",
-                             reg_names[0]);
-                return -1;
-            }
+            /* Get register contents from WHP, unless it's the zero register. */
+            if (da_syndrome.srt != ARM_ZERO_REG_INDEX) {
+                hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
+                    whpx->partition,
+                    cpu->cpu_index,
+                    &reg_names[0],
+                    1,
+                    &regs[0]);
+                if (FAILED(hr)) {
+                    error_report("WHPX: Failed to read virtual register %d\n",
+                                 reg_names[0]);
+                    return -1;
+                }
 
-            val = cpu_to_le64(regs[0].Reg64);
-            memcpy(data, &val, sizeof(val));
+                val = cpu_to_le64(regs[0].Reg64);
+                memcpy(data, &val, sizeof(val));
+            }
 
             /* TODO: This function doesn't have a return value. That may mean
              * that we need to track physically-not-present memory and
@@ -1063,15 +1068,28 @@ static int handle_gpa_exit(CPUState *cpu)
             assert(int_hdr->InstructionLength == 2 ||
                    int_hdr->InstructionLength == 4);
 
-            /* Set the target register and update PC */
-            hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
-                whpx->partition,
-                cpu->cpu_index,
-                &reg_names[0], REG_PAIR, &regs[0]);
-            if (FAILED(hr)) {
-                error_report("WHPX: Failed to write virtual register %d or Pc\n",
-                             reg_names[0]);
-                return -1;
+            /* Set the target register (unless it's the zero register) and
+             * update PC.
+             */
+            if (da_syndrome.srt == ARM_ZERO_REG_INDEX) {
+                hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
+                    whpx->partition,
+                    cpu->cpu_index,
+                    &reg_names[1], 1, &regs[1]);
+                if (FAILED(hr)) {
+                    error_report("WHPX: Failed to write virtual Pc\n");
+                    return -1;
+                }
+            } else {
+                hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
+                    whpx->partition,
+                    cpu->cpu_index,
+                    &reg_names[0], REG_PAIR, &regs[0]);
+                if (FAILED(hr)) {
+                    error_report("WHPX: Failed to write virtual register %d or Pc\n",
+                                 reg_names[0]);
+                    return -1;
+                }
             }
         }
 
