@@ -632,13 +632,21 @@ static void whpx_set_registers(CPUState *cpu, int level)
     /* Exception vector base */
     vcxt.values[idx++].Reg64 = env->cp15.vbar_ns;
 
-    /* The 32 floating point registers are arranged in the same relative
-     * order in QEMU and WHP.
+    /* QEMU reserves storage space for 2048-bit SVE registers, even if those
+     * aren't supported the current platform. The bottom 128 bits of each SVE
+     * register are the 128-bit floating point/vector registers.
      *
-     * TODO: This code is likely wrong. The Q registers are 128 bits.
+     * TODO: Implement AARCH32. The floating point data is stored differently.
+     * See target/arm/cpu.h.
+     * TODO: Implement SVE.
      */
+    assert(is_a64(env));
     for (fp_reg_nr = 0; fp_reg_nr < 32; fp_reg_nr++) {
-        vcxt.values[idx++].Reg64 = *aa64_vfp_qreg(env, fp_reg_nr);
+        uint64_t *qreg_base = aa64_vfp_qreg(env, fp_reg_nr);
+        WHV_UINT128 qreg_val = {};
+        qreg_val.Low64 = qreg_base[0];
+        qreg_val.High64 = qreg_base[1];
+        vcxt.values[idx++].Reg128 = qreg_val;
     }
 
     vcxt.values[idx++].Reg64 = env->vfp.fpsr;
@@ -748,13 +756,21 @@ static void whpx_get_registers(CPUState *cpu)
     /* Exception vector base */
     env->cp15.vbar_ns = vcxt.values[idx++].Reg64;
 
-    /* The 32 floating point registers are arranged in the same relative
-     * order in QEMU and WHP.
+    /* QEMU reserves storage space for 2048-bit SVE registers, even if those
+     * aren't supported the current platform. The bottom 128 bits of each SVE
+     * register are the 128-bit floating point/vector registers.
      *
-     * TODO: These are probably wrong.
+     * TODO: Implement AARCH32. The floating point data is stored differently.
+     * See target/arm/cpu.h.
+     * TODO: Implement SVE.
      */
+    assert(is_a64(env));
     for (fp_reg_nr = 0; fp_reg_nr < 32; fp_reg_nr++) {
-        *aa64_vfp_qreg(env, fp_reg_nr) = vcxt.values[idx++].Reg64;
+        uint64_t *qreg_base = aa64_vfp_qreg(env, fp_reg_nr);
+        WHV_UINT128 qreg_val = vcxt.values[idx++].Reg128;
+
+        qreg_base[0] = qreg_val.Low64;
+        qreg_base[1] = qreg_val.High64;
     }
 
     env->vfp.fpsr = vcxt.values[idx++].Reg64;
