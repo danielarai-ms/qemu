@@ -343,6 +343,8 @@ static void dump_cpu(CPUState *cpu, const char *label)
     if (is_a64(env)) {
         pstate = pstate_read(env);
     } else {
+        /* XXX implement arm32 */
+        assert(0);
         pstate = cpsr_read(env);
     }
     printf("%16s: %#16llx\n", "pstate", (uint64_t) pstate);
@@ -597,6 +599,8 @@ static void whpx_set_registers(CPUState *cpu, int level)
     if (is_a64(env)) {
         pstate = pstate_read(env);
     } else {
+        /* XXX implement arm32 */
+        assert(0);
         pstate = cpsr_read(env);
     }
     vcxt.values[idx++].Reg32 = pstate;
@@ -714,6 +718,7 @@ static void whpx_get_registers(CPUState *cpu)
     if (is_a64(env)) {
         pstate_write(env, pstate);
     } else {
+        /* XXX implement arm32 */
         assert(0);
         cpsr_write(env, pstate, 0xffffffff, CPSRWriteRaw);
     }
