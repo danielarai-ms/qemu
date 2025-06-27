@@ -81,8 +81,11 @@ static void whpx_kick_vcpu_thread(CPUState *cpu)
 
 static bool whpx_vcpu_thread_is_idle(CPUState *cpu)
 {
-    /* TODO: Implement this function */
-    assert(false);
+    /* The i386 version of this function returns true when the hypervisor
+     * is not providing APIC emulation, and false when it is. On ARM, the WHP
+     * interfaces require that the hypervisor provide interrupt controller
+     * virtualization, so we always return false here.
+     */
     return false;
 }
 

@@ -652,6 +652,8 @@ static void whpx_set_registers(CPUState *cpu, int level)
     vcxt.values[idx++].Reg64 = env->vfp.fpsr;
     vcxt.values[idx++].Reg64 = env->vfp.fpcr;
 
+    /* TODO: MPIDR for interrupt identity */
+
     /* TODO: fp_status */
     /* TODO: zcr */
     /* TODO: smcr */
