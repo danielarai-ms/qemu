@@ -52,6 +52,19 @@ struct WHPXARMGICv3Class {
     /* TODO: Do we need additional whpx-specific fields? */
 };
 
+struct ICC_SGI1R_EL1_LAYOUT {
+    uint64_t targetlist: 16;
+    uint64_t aff1: 8;
+    uint64_t intid: 4;
+    uint64_t res28: 4;
+    uint64_t aff2: 8;
+    uint64_t irm: 1;
+    uint64_t res41: 3;
+    uint64_t rs: 4;
+    uint64_t aff3: 8;
+    uint64_t res56: 8;
+};
+
 static void whpx_arm_gicv3_set_irq(void *opaque, int irq, int level)
 {
     GICv3State *s = (GICv3State *) opaque;
@@ -94,6 +107,9 @@ static void whpx_arm_gicv3_set_irq(void *opaque, int irq, int level)
         printf("whpx_arm_gicv3_set_irq unsupported irq %d for cpu %d level %d\n",
                banked_irq, cpu, level);
         /* TODO: values for vector and destination are TBD */
+        /* For these interrupts, the destination field is in the same format
+         * as the ICC_SGI1R_EL1 register.
+         */
         g_assert_not_reached();
     }
     whpx_arm_set_irq(vector, destination, level);
