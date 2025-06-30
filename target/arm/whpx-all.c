@@ -42,7 +42,11 @@
  * as a source register, this always provides the value zero. This may not
  * be implemented as an actual register in hardware.
  */
+/* XXX TODO: Rename this constant ARM64 */
 #define ARM_ZERO_REG_INDEX 31
+
+#define ARM64_MPIDR_RESERVED1_OFFSET ((uint64_t) 31)
+#define ARM64_MPIDR_RESERVED1 ((uint64_t) 1 << ARM64_MPIDR_RESERVED1_OFFSET)
 
 /*
  * The register layout roughly follows the layout of CPUARMState and
@@ -145,6 +149,7 @@ static const WHV_REGISTER_NAME whpx_register_names[] = {
     WHvArm64RegisterFpsr,
     WHvArm64RegisterFpcr,
 
+    WHvArm64RegisterMpidrEl1,
     /* TODO: Other required registers? */
 };
 
@@ -652,7 +657,14 @@ static void whpx_set_registers(CPUState *cpu, int level)
     vcxt.values[idx++].Reg64 = env->vfp.fpsr;
     vcxt.values[idx++].Reg64 = env->vfp.fpcr;
 
-    /* TODO: MPIDR for interrupt identity */
+    /* MPIDR. The hardware register contains the affinity values for
+     * this CPU, plus two flags indicating whether the system is uniprocessor
+     * and if the CPU is hyperthreaded, and a reserved bit which must be set
+     * to 1. QEMU's mp_affinity field just stores the affinity fields, without
+     * the flags or reserved bit. We want both flags to be 0, but we need to
+     * set the reserved bit.
+     */
+    vcxt.values[idx++].Reg64 = arm_cpu->mp_affinity | ARM64_MPIDR_RESERVED1;
 
     /* TODO: fp_status */
     /* TODO: zcr */
@@ -777,6 +789,18 @@ static void whpx_get_registers(CPUState *cpu)
 
     env->vfp.fpsr = vcxt.values[idx++].Reg64;
     env->vfp.fpcr = vcxt.values[idx++].Reg64;
+
+    /* The hardware MPIDR register contains the CPU's affinity values as well
+     * as two flags. QEMU's mp_affinity field just contains the affinity
+     * values, without the flags. Mask out the non-affinity bits in case
+     * any of them somehow got set.
+     *
+     * We don't expect the affinity value to change at runtime, so for now
+     * just assert that the value on the CPU matches the value we think it
+     * should be.
+     */
+    assert(arm_cpu->mp_affinity ==
+           (vcxt.values[idx++].Reg64 & ARM64_AFFINITY_MASK));
 
     /* TODO: fp_status */
     /* TODO: zcr */
