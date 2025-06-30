@@ -21,6 +21,7 @@
 #include "whpx-arm.h"
 #include "migration/blocker.h"
 #include "syndrome.h"
+#include "hw/intc/arm_gicv3_common.h"
 
 #include "whpx-internal.h"
 #include "whpx-accel-ops.h"
@@ -47,6 +48,8 @@
 
 #define ARM64_MPIDR_RESERVED1_OFFSET ((uint64_t) 31)
 #define ARM64_MPIDR_RESERVED1 ((uint64_t) 1 << ARM64_MPIDR_RESERVED1_OFFSET)
+
+#define GICR_BYTES_PER_CPU ((uint64_t)(128 * 1024))
 
 /*
  * The register layout roughly follows the layout of CPUARMState and
@@ -168,6 +171,7 @@ struct AccelCPUState {
     bool interruption_pending;
     */
     bool dirty;
+    bool gicr_base_set;
 
     /* Must be the last field as it may have a tail */
     WHV_RUN_VP_EXIT_CONTEXT exit_ctx;
@@ -562,6 +566,37 @@ void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
     cpu->psci_version = QEMU_PSCI_VERSION_0_2;
 }
 
+static uint64_t whpx_get_gicr_base_addr(CPUARMState *env, int cpu_index)
+{
+    assert(cpu_index >= 0);
+    GICv3CPUState *gic_cpu_state = env->gicv3state;
+    assert(gic_cpu_state != NULL);
+    GICv3State *gic_state = gic_cpu_state->gic;
+    assert(gic_state != NULL);
+    assert(gic_state->redist_region_count != NULL);
+    assert(gic_state->redist_regions != NULL);
+
+    /* There may be more than one redistributor region, with each region having
+     * one or more redistributors within that region. Each CPU gets two
+     * contiguous 64K pages. Pages for additional CPUs within the region
+     * follow immediately after the first CPU (no gaps). Different
+     * redistributor regions do not need to be contiguous with each other.
+     */
+
+    for (uint32_t region = 0; region < gic_state->nb_redist_regions; region++) {
+        uint32_t count = gic_state->redist_region_count[region];
+        uint32_t start_index = gic_state->redist_regions[region].cpuidx;
+        uint32_t end_index = start_index + count;
+
+        if (start_index <= cpu_index && end_index > cpu_index) {
+            uint64_t base = gic_state->redist_regions[region].iomem.addr +
+                GICR_BYTES_PER_CPU * (cpu_index - start_index);
+            return base;
+        }
+    }
+    g_assert_not_reached();
+}
+
 /* Partially derived from i386 */
 /* The corresponding functions in KVM is kvm_arch_put_registers */
 static void whpx_set_registers(CPUState *cpu, int level)
@@ -682,18 +717,23 @@ static void whpx_set_registers(CPUState *cpu, int level)
                      hr);
     }
 
-    /* XXX just an experiment - need to move this somewhere else */
-    static bool gic_set;
-    if (!gic_set) {
+    /* XXX Either this should be set in the block above with all the other code
+     * or this should be set once and maybe just verified to be correct later.
+     * Possibly we should use the x86 optimization where certain registers
+     * are only set when necessary, while general registers are always set.
+     */
+    if (!cpu->accel->gicr_base_set) {
         WHV_REGISTER_VALUE gic_base = {};
         WHV_REGISTER_NAME name = WHvArm64RegisterGicrBaseGpa;
-        gic_base.Reg64 = 0x00000000080a0000ll;
+        uint64_t base = whpx_get_gicr_base_addr(env, cpu->cpu_index);
+        /* XXX logging */
+        printf("gicr base address 0x%llx\n", base);
+        gic_base.Reg64 = base;
         hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
             whpx->partition, cpu->cpu_index,
             &name, 1, &gic_base);
         assert(!FAILED(hr));
-
-        gic_set = true;
+        cpu->accel->gicr_base_set = true;
     }
 }
 
