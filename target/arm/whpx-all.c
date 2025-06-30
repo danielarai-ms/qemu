@@ -1649,7 +1649,7 @@ static int whpx_accel_init(MachineState *ms)
     ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0xeff68000;
     */
     ic_param->GicV3Parameters.GicdBaseAddress = 0x0000000008000000ll;
-    ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0x0000000008090000ll;
+    //ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0x0000000008090000ll;
     ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
     ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
     ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
