@@ -1581,6 +1581,8 @@ static int whpx_accel_init(MachineState *ms)
 
     whpx = &whpx_global;
 
+    printf("XXX Accelerator is being initialized\n");
+
     if (!init_whp_dispatch()) {
         ret = -ENOSYS;
         printf("Failed to initialize whp dispatch\n");
@@ -1697,6 +1699,8 @@ static void whpx_accel_class_init(ObjectClass *oc, const void *data)
 static void whpx_accel_instance_init(Object *obj)
 {
     /* TODO: Any necessary global initialization should go here. */
+    /* XXX logging */
+    printf("XXX whpx_accel_instance_init\n");
 }
 
 static const TypeInfo whpx_accel_type = {
