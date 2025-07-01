@@ -51,6 +51,12 @@
 
 #define GICR_BYTES_PER_CPU ((uint64_t)(128 * 1024))
 
+#define WHP_TEMP_PARTITION_GICD_ADDR 0xffff0000
+
+/* TODO: These values should probably not be hard coded */
+#define WHP_TIMER_INTERRUPT 0x1b
+#define WHP_PMU_INTERRUPT 0x17
+
 /*
  * The register layout roughly follows the layout of CPUARMState and
  * not necessarily the order of the WHP definitions.
@@ -411,24 +417,89 @@ static WHV_REGISTER_NAME whpx_isar_register_names[] = {
 
 static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
 {
-    struct whpx_state *whpx = &whpx_global;
+    WHV_PARTITION_HANDLE partition;
+    bool partition_initialized = false;
+    bool success = false;
     HRESULT hr;
     /* TODO: Is there an existing macro to get this size? */
     uint32_t register_count = sizeof(whpx_isar_register_names) / sizeof(WHV_REGISTER_NAME);
     WHV_REGISTER_VALUE isar_values[sizeof(whpx_isar_register_names) / sizeof(WHV_REGISTER_NAME)];
     struct ARMISARegisters *isar = &cpu->isar;
     WHV_REGISTER_VALUE *cur_isar_value;
+    WHV_PARTITION_PROPERTY prop;
+    WHV_ARM64_IC_PARAMETERS *ic_param;
 
-    /* TODO: what's the indentation style? */
+    hr = whp_dispatch.WHvCreatePartition(&partition);
+    if (FAILED(hr)) {
+        error_report("WHPX: Unable to create temporary partition: hr=%08lx\n",
+                     hr);
+        success = false;
+        goto out;
+    }
+    partition_initialized = true;
+
+    /* TODO: Processor count should probably match the requested processor
+     * count, just in case that affects any ID registers.
+     */
+    memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
+    prop.ProcessorCount = 1;
+    hr = whp_dispatch.WHvSetPartitionProperty(
+        partition,
+        WHvPartitionPropertyCodeProcessorCount,
+        &prop,
+        sizeof(WHV_PARTITION_PROPERTY));
+
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to set the partition processor count to %d"
+                     " hr=%08lx", prop.ProcessorCount, hr);
+    }
+
+    /* Initialize the interrupt controller with some default values. This is
+     * required to be able to set up the partition.
+     */
+    memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
+    ic_param = &prop.Arm64IcParameters;
+    /* TODO: WHP also supports GicV4 */
+    ic_param->EmulationMode = WHvArm64IcEmulationModeGicV3;
+    ic_param->GicV3Parameters.GicdBaseAddress = WHP_TEMP_PARTITION_GICD_ADDR;
+    ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
+    ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv =
+        WHP_TIMER_INTERRUPT;
+    ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt =
+        WHP_PMU_INTERRUPT;
+    hr = whp_dispatch.WHvSetPartitionProperty(
+        partition,
+        WHvPartitionPropertyCodeArm64IcParameters,
+        &prop,
+        sizeof(WHV_PARTITION_PROPERTY));
+
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to set interrupt controller properties,"
+                     " hr=%08lx", hr);
+        success = false;
+        goto out;
+    }
+
+    hr = whp_dispatch.WHvSetupPartition(partition);
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to set up partition, hr=%08lx", hr);
+        success = false;
+        goto out;
+    }
+
+    /* XXX TODO: what's the indentation style? */
     hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
-        whpx->partition, WHV_ANY_VP, whpx_isar_register_names, register_count,
+        partition,
+        WHV_ANY_VP,
+        whpx_isar_register_names,
+        register_count,
         isar_values);
 
     if (FAILED(hr)) {
         error_report("WHPX: Failed to read ISAR register values, hr=%08lx", hr);
-        return false;
+        success = false;
+        goto out;
     }
-
 
     /* TODO: These assignments need to be kept in sync with the order of
      * register names in whpx_isar_register_names. There's probably a better
@@ -498,8 +569,18 @@ static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
 
 #define DUMP_ID(reg) printf("%16s: %016llx\n", STR(reg), (uint64_t)isar->reg)
     DUMP_ID(id_aa64pfr0);
+    success = true;
 
-    return true;
+out:
+    if (partition_initialized) {
+        hr = whp_dispatch.WHvDeletePartition(partition);
+        if (FAILED(hr)) {
+            error_report("WHPX: Unable to delete temp partition: hr=%08lx\n",
+                         hr);
+            success = false;
+        }
+    }
+    return success;
 }
 
 void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu)
@@ -1593,7 +1674,7 @@ static int whpx_accel_init(MachineState *ms)
         WHvCapabilityCodeHypervisorPresent, &whpx_cap,
         sizeof(whpx_cap), &whpx_cap_size);
     if (FAILED(hr) || !whpx_cap.HypervisorPresent) {
-        error_report("WHPX: No accelerator found, hr=%08lx", hr);
+        error_report("WHPX: No hypervisor found, hr=%08lx", hr);
         ret = -ENOSPC;
         goto error;
     }
