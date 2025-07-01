@@ -572,6 +572,7 @@ static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
     success = true;
 
 out:
+    /* Make sure to clean up the temporary partition. */
     if (partition_initialized) {
         hr = whp_dispatch.WHvDeletePartition(partition);
         if (FAILED(hr)) {
@@ -1000,11 +1001,16 @@ static Error *whpx_migration_blocker;
 /* Partially derived from i386 */
 int whpx_init_vcpu(CPUState *cpu)
 {
+    // XXX
+#if 0
     HRESULT hr;
     struct whpx_state *whpx = &whpx_global;
+#endif
     AccelCPUState *vcpu = NULL;
     Error *local_error = NULL;
     int ret;
+
+    printf("Initializing VCPU %d\n", cpu->cpu_index);
 
     /* Add migration blockers for all unsupported features of the
      * Windows Hypervisor Platform. TODO: WHP on ARM may have additional
@@ -1023,6 +1029,8 @@ int whpx_init_vcpu(CPUState *cpu)
 
     vcpu = g_new0(AccelCPUState, 1);
 
+    /* XXX Just check the order of initialization */
+#if 0
     hr = whp_dispatch.WHvCreateVirtualProcessor(
         whpx->partition, cpu->cpu_index, 0 /* flags, must be zero */);
     if (FAILED(hr)) {
@@ -1031,6 +1039,7 @@ int whpx_init_vcpu(CPUState *cpu)
         ret = -EINVAL;
         goto error;
     }
+#endif
 
     /* TODO: is there an equivalent of tsc_khz? */
     /* TODO: is there an equivalent of apic_bus_freq? */
@@ -1473,6 +1482,63 @@ static void whpx_update_mapping(hwaddr start_pa, ram_addr_t size,
     }
 }
 
+static void whpx_process_gic_dist_section(MemoryRegionSection *section, int add)
+{
+    HRESULT hr;
+    WHV_ARM64_IC_PARAMETERS *ic_param;
+    MemoryRegion *mr = section->mr;
+    WHV_PARTITION_PROPERTY prop;
+    hwaddr start_pa;
+    struct whpx_state *whpx = &whpx_global;
+
+    assert(!strcmp(mr->name, "gicv3_dist"));
+    assert(add);
+    assert(!whpx->gicv3_dist_initialized);
+
+    start_pa = section->offset_within_address_space;
+    // XXX
+    *((volatile int *)0) = 0;
+
+    /*
+     * Initialize the interrupt controller properties. The interrupt controller
+     * must be initialized before the partition is set up.
+     * TODO: Use the requested interrupt controller properties instead
+     * of hard-coded ones.
+     *
+     * XXX TODO: Refactor with the code in get_cpu_features_from_host to
+     * avoid code duplication.
+     */
+    memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
+    ic_param = &prop.Arm64IcParameters;
+    ic_param->EmulationMode = WHvArm64IcEmulationModeGicV3;
+    ic_param->GicV3Parameters.GicdBaseAddress = start_pa;
+
+    ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
+    ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
+    ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
+    hr = whp_dispatch.WHvSetPartitionProperty(
+        whpx->partition,
+        WHvPartitionPropertyCodeArm64IcParameters,
+        &prop,
+        sizeof(WHV_PARTITION_PROPERTY));
+
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to set interrupt controller properties,"
+                     " hr=%08lx", hr);
+        g_assert_not_reached();
+        return;
+    }
+
+    hr = whp_dispatch.WHvSetupPartition(whpx->partition);
+    if (FAILED(hr)) {
+        error_report("WHPX: Failed to set up partition, hr=%08lx", hr);
+        g_assert_not_reached();
+        return;
+    }
+
+    whpx->gicv3_dist_initialized = true;
+}
+
 /* Same as i386 */
 static void whpx_process_section(MemoryRegionSection *section, int add)
 {
@@ -1481,6 +1547,15 @@ static void whpx_process_section(MemoryRegionSection *section, int add)
     ram_addr_t size = int128_get64(section->size);
     unsigned int delta;
     uint64_t host_va;
+
+    /* TODO: Is there a better way for the accelerator to know where the
+     * gicv3_dist region is?
+     */
+    if (!strcmp(mr->name, "gicv3_dist")) {
+        printf("WHPX: being told about gicv3_dist region\n");
+        whpx_process_gic_dist_section(section, add);
+        return;
+    }
 
     /* XXX  - debugging - just to find out where regions are */
     printf("WHPX: HID PA:%p Size:%p, '%s'\n",
@@ -1658,7 +1733,6 @@ static int whpx_accel_init(MachineState *ms)
     WHV_CAPABILITY whpx_cap;
     UINT32 whpx_cap_size;
     WHV_PARTITION_PROPERTY prop;
-    WHV_ARM64_IC_PARAMETERS *ic_param;
 
     whpx = &whpx_global;
 
@@ -1707,52 +1781,6 @@ static int whpx_accel_init(MachineState *ms)
     }
 
     /* TODO: If necessary, register any required extended VM exits. */
-
-    /*
-     * Initialize the interrupt controller.
-     * TODO: Use the requested interrupt controller properties instead
-     * of hard-coded ones.
-     */
-    memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
-    ic_param = &prop.Arm64IcParameters;
-    ic_param->EmulationMode = WHvArm64IcEmulationModeGicV3;
-    /* XXX - hard coding these to match? how QEMU happens to set up the GIC
-     * in my test case. This needs to be fixed by QEMU somehow providing
-     * the actual GIC parameters to the WHPX accelerator. Possibly the
-     * GIC needs to be initialized with some default address (since we might
-     * not know the final address at this time) and then changed to the correct
-     * address later. Remapping is supported by WHP, but some address must
-     * be provided when the partition is set up, or else the partition
-     * setup will fail.
-     */
-    /*
-    ic_param->GicV3Parameters.GicdBaseAddress = 0xffff0000;
-    ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0xeff68000;
-    */
-    ic_param->GicV3Parameters.GicdBaseAddress = 0x0000000008000000ll;
-    //ic_param->GicV3Parameters.GitsTranslaterBaseAddress = 0x0000000008090000ll;
-    ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
-    ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
-    ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
-    hr = whp_dispatch.WHvSetPartitionProperty(
-        whpx->partition,
-        WHvPartitionPropertyCodeArm64IcParameters,
-        &prop,
-        sizeof(WHV_PARTITION_PROPERTY));
-
-    if (FAILED(hr)) {
-        error_report("WHPX: Failed to set interrupt controller properties,"
-                     " hr=%08lx", hr);
-        ret = -EINVAL;
-        goto error;
-    }
-
-    hr = whp_dispatch.WHvSetupPartition(whpx->partition);
-    if (FAILED(hr)) {
-        error_report("WHPX: Failed to set up partition, hr=%08lx", hr);
-        ret = -EINVAL;
-        goto error;
-    }
 
     whpx_memory_init();
 

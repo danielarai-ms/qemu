@@ -23,6 +23,7 @@ struct whpx_state {
     WHV_PARTITION_HANDLE partition;
     int32_t running_cpus;
     bool step_pending;
+    bool gicv3_dist_initialized;
 };
 
 extern struct whpx_state whpx_global;
