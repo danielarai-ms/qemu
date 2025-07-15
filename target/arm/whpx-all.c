@@ -1001,11 +1001,8 @@ static Error *whpx_migration_blocker;
 /* Partially derived from i386 */
 int whpx_init_vcpu(CPUState *cpu)
 {
-    // XXX
-#if 0
     HRESULT hr;
     struct whpx_state *whpx = &whpx_global;
-#endif
     AccelCPUState *vcpu = NULL;
     Error *local_error = NULL;
     int ret;
@@ -1029,8 +1026,6 @@ int whpx_init_vcpu(CPUState *cpu)
 
     vcpu = g_new0(AccelCPUState, 1);
 
-    /* XXX Just check the order of initialization */
-#if 0
     hr = whp_dispatch.WHvCreateVirtualProcessor(
         whpx->partition, cpu->cpu_index, 0 /* flags, must be zero */);
     if (FAILED(hr)) {
@@ -1039,7 +1034,6 @@ int whpx_init_vcpu(CPUState *cpu)
         ret = -EINVAL;
         goto error;
     }
-#endif
 
     /* TODO: is there an equivalent of tsc_khz? */
     /* TODO: is there an equivalent of apic_bus_freq? */
