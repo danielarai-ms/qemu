@@ -17,13 +17,29 @@
 #include <windows.h>
 #include <winhvplatform.h>
 
+struct whpx_mem_region {
+    hwaddr start_pa;
+    ram_addr_t size;
+    void *host_va;
+    int rom;
+    const char *name;
+};
+
 /* Partially copied from i386. */
 struct whpx_state {
-    uint64_t mem_quota;
+    uint64_t mem_quota; // TODO: Unused, should remove
     WHV_PARTITION_HANDLE partition;
     int32_t running_cpus;
     bool step_pending;
-    bool gicv3_dist_initialized;
+    bool partition_set_up;
+
+    /* XXX TODO: For now, just one non-MMIO region is expected before the
+     * gicd region is seen. Either fix the BIOS ROM region so it's handled
+     * correctly by making it MMIO, or fully implement the ability to have
+     * an arbitrary number of memory regions before the gicd region.
+     */
+    struct whpx_mem_region initial_region;
+    bool initial_region_set;
 };
 
 extern struct whpx_state whpx_global;

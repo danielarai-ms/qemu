@@ -1493,17 +1493,13 @@ static void whpx_process_gic_dist_section(MemoryRegionSection *section, int add)
 
     assert(!strcmp(mr->name, "gicv3_dist"));
     assert(add);
-    assert(!whpx->gicv3_dist_initialized);
+    assert(!whpx->partition_set_up);
 
     start_pa = section->offset_within_address_space;
-    // XXX
-    *((volatile int *)0) = 0;
 
     /*
      * Initialize the interrupt controller properties. The interrupt controller
      * must be initialized before the partition is set up.
-     * TODO: Use the requested interrupt controller properties instead
-     * of hard-coded ones.
      *
      * XXX TODO: Refactor with the code in get_cpu_features_from_host to
      * avoid code duplication.
@@ -1514,6 +1510,11 @@ static void whpx_process_gic_dist_section(MemoryRegionSection *section, int add)
     ic_param->GicV3Parameters.GicdBaseAddress = start_pa;
 
     ic_param->GicV3Parameters.GicLpiIntIdBits = 1;
+
+    /* XXX TODO: Should these interrupt numbers be hard coded? Are
+     * they properties set by QEMU system emulation, or does QEMU read
+     * them from the system somehow?
+     */
     ic_param->GicV3Parameters.GicPpiOverflowInterruptFromCntv = 0x1B;
     ic_param->GicV3Parameters.GicPpiPerformanceMonitorsInterrupt = 0x17;
     hr = whp_dispatch.WHvSetPartitionProperty(
@@ -1536,12 +1537,23 @@ static void whpx_process_gic_dist_section(MemoryRegionSection *section, int add)
         return;
     }
 
-    whpx->gicv3_dist_initialized = true;
+    /*
+     * Handle any memory regions that were initialized before the gicd region.
+     */
+    /* XXX TODO: Support multiple initial memory regions. */
+    if (whpx->initial_region_set) {
+        struct whpx_mem_region *region = &whpx->initial_region;
+        whpx_update_mapping(region->start_pa, region->size, region->host_va,
+                            true, region->rom, region->name);
+    }
+
+    whpx->partition_set_up = true;
 }
 
 /* Same as i386 */
 static void whpx_process_section(MemoryRegionSection *section, int add)
 {
+    struct whpx_state *whpx = &whpx_global;
     MemoryRegion *mr = section->mr;
     hwaddr start_pa = section->offset_within_address_space;
     ram_addr_t size = int128_get64(section->size);
@@ -1591,6 +1603,22 @@ static void whpx_process_section(MemoryRegionSection *section, int add)
 
     host_va = (uintptr_t)memory_region_get_ram_ptr(mr)
             + section->offset_within_region + delta;
+
+    if (!whpx->partition_set_up) {
+        struct whpx_mem_region *region = &whpx->initial_region;
+
+        /* XXX TODO: Only one initial region supported right now. */
+        assert(!whpx->initial_region_set);
+        /* XXX TODO: Support remove if needed. */
+        assert(add);
+        region->start_pa = start_pa;
+        region->size = size;
+        region->host_va = (void *)(uintptr_t) host_va;
+        region->rom = memory_region_is_rom(mr);
+        region->name = mr->name;
+        whpx->initial_region_set = true;
+        return;
+    }
 
     whpx_update_mapping(start_pa, size, (void *)(uintptr_t)host_va, add,
                         memory_region_is_rom(mr), mr->name);
