@@ -1051,7 +1051,6 @@ int whpx_init_vcpu(CPUState *cpu)
     if (FAILED(hr)) {
         error_report("WHPX: Failed to create a virtual processor,"
                      " hr=%08lx", hr);
-        *(volatile int *) 0 = 0;
         ret = -EINVAL;
         goto error;
     }
@@ -1784,6 +1783,8 @@ static int whpx_accel_init(MachineState *ms)
     WHV_CAPABILITY whpx_cap;
     UINT32 whpx_cap_size;
     WHV_PARTITION_PROPERTY prop;
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
+    int pa_range = 36;
 
     whpx = &whpx_global;
 
@@ -1833,6 +1834,15 @@ static int whpx_accel_init(MachineState *ms)
         goto error;
     }
 
+    if (mc->whpx_get_physical_address_range) {
+        pa_range = mc->whpx_get_physical_address_range(ms);
+        if (pa_range < 0) {
+            return -EINVAL;
+        }
+    } else {
+        g_assert_not_reached();
+    }
+
     /* TODO: If necessary, register any required extended VM exits. */
 
     whpx_memory_init();
@@ -1878,3 +1888,9 @@ static void whpx_type_init(void)
 }
 
 type_init(whpx_type_init);
+
+int whpx_arm_get_max_ipa_bit_size(void)
+{
+    /* TODO: Implement this properly */
+    return 40;
+}

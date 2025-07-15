@@ -70,9 +70,6 @@ static void whpx_start_vcpu_thread(CPUState *cpu)
              cpu->cpu_index);
     qemu_thread_create(cpu->thread, thread_name, whpx_cpu_thread_fn,
                        cpu, QEMU_THREAD_JOINABLE);
-
-    /* XXX debugging */
-    *(volatile int *) 0 = 0;
 }
 
 static void whpx_kick_vcpu_thread(CPUState *cpu)

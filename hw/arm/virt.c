@@ -68,6 +68,7 @@
 #include "hw/irq.h"
 #include "kvm_arm.h"
 #include "hvf_arm.h"
+#include "whpx-arm.h"
 #include "hw/firmware/smbios.h"
 #include "qapi/visitor.h"
 #include "qapi/qapi-visit-common.h"
@@ -3136,7 +3137,17 @@ static int virt_hvf_get_physical_address_range(MachineState *ms)
 
 static int virt_whpx_get_physical_address_range(MachineState *ms)
 {
-    return -1;
+    VirtMachineState *vms = VIRT_MACHINE(ms);
+
+    int max_ipa_size = whpx_arm_get_max_ipa_bit_size();
+
+    virt_set_memmap(vms, max_ipa_size);
+    int requested_ipa_size = 64 - clz64(vms->highest_gpa);
+    /* XXX logging */
+    printf("Requested ipa size is %d\n", requested_ipa_size);
+
+    /* TODO: Does WHPX have a default/minimum IPA size like KVM/HVF? */
+    return requested_ipa_size;
 }
 
 static void virt_machine_class_init(ObjectClass *oc, const void *data)
