@@ -415,28 +415,20 @@ static WHV_REGISTER_NAME whpx_isar_register_names[] = {
     /* TODO: reset_pmcr_el0,*/
 };
 
-static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
+static WHV_PARTITION_HANDLE whpx_create_temporary_partition(void)
 {
-    WHV_PARTITION_HANDLE partition;
-    bool partition_initialized = false;
-    bool success = false;
+    WHV_PARTITION_HANDLE partition = NULL;
     HRESULT hr;
-    /* TODO: Is there an existing macro to get this size? */
-    uint32_t register_count = sizeof(whpx_isar_register_names) / sizeof(WHV_REGISTER_NAME);
-    WHV_REGISTER_VALUE isar_values[sizeof(whpx_isar_register_names) / sizeof(WHV_REGISTER_NAME)];
-    struct ARMISARegisters *isar = &cpu->isar;
-    WHV_REGISTER_VALUE *cur_isar_value;
     WHV_PARTITION_PROPERTY prop;
     WHV_ARM64_IC_PARAMETERS *ic_param;
+    bool partition_initialized = false;
 
     hr = whp_dispatch.WHvCreatePartition(&partition);
     if (FAILED(hr)) {
         error_report("WHPX: Unable to create temporary partition: hr=%08lx\n",
                      hr);
-        success = false;
-        goto out;
+        goto error;
     }
-    partition_initialized = true;
 
     /* TODO: Processor count should probably match the requested processor
      * count, just in case that affects any ID registers.
@@ -448,11 +440,6 @@ static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
         WHvPartitionPropertyCodeProcessorCount,
         &prop,
         sizeof(WHV_PARTITION_PROPERTY));
-
-    if (FAILED(hr)) {
-        error_report("WHPX: Failed to set the partition processor count to %d"
-                     " hr=%08lx", prop.ProcessorCount, hr);
-    }
 
     /* Initialize the interrupt controller with some default values. This is
      * required to be able to set up the partition.
@@ -476,16 +463,48 @@ static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
     if (FAILED(hr)) {
         error_report("WHPX: Failed to set interrupt controller properties,"
                      " hr=%08lx", hr);
-        success = false;
-        goto out;
+        goto error;
     }
 
     hr = whp_dispatch.WHvSetupPartition(partition);
     if (FAILED(hr)) {
         error_report("WHPX: Failed to set up partition, hr=%08lx", hr);
-        success = false;
-        goto out;
+        goto error;
     }
+
+    return partition;
+
+error:
+    if (partition_initialized) {
+        hr = whp_dispatch.WHvDeletePartition(partition);
+        if (FAILED(hr)) {
+            error_report("WHPX: Unable to delete temp partition: hr=%08lx\n",
+                         hr);
+        }
+    }
+    return NULL;
+}
+
+static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
+{
+    WHV_PARTITION_HANDLE partition;
+    bool partition_initialized = false;
+    bool success = false;
+    HRESULT hr;
+    /* TODO: Is there an existing macro to get this size? */
+    uint32_t register_count = sizeof(whpx_isar_register_names) / sizeof(WHV_REGISTER_NAME);
+    WHV_REGISTER_VALUE isar_values[sizeof(whpx_isar_register_names) / sizeof(WHV_REGISTER_NAME)];
+    struct ARMISARegisters *isar = &cpu->isar;
+    WHV_REGISTER_VALUE *cur_isar_value;
+
+    partition = whpx_create_temporary_partition();
+    if (partition == NULL) {
+        error_report("Cannot get CPU features from host: temporary partition"
+                     " creation failed");
+        return false;
+    }
+
+    partition_initialized = true;
 
     /* XXX TODO: what's the indentation style? */
     hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
@@ -1028,9 +1047,11 @@ int whpx_init_vcpu(CPUState *cpu)
 
     hr = whp_dispatch.WHvCreateVirtualProcessor(
         whpx->partition, cpu->cpu_index, 0 /* flags, must be zero */);
+
     if (FAILED(hr)) {
         error_report("WHPX: Failed to create a virtual processor,"
                      " hr=%08lx", hr);
+        *(volatile int *) 0 = 0;
         ret = -EINVAL;
         goto error;
     }
