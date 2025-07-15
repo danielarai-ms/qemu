@@ -16,14 +16,20 @@
 
 #include <windows.h>
 #include <winhvplatform.h>
+#include "qemu/queue.h"
 
 struct whpx_mem_region {
     hwaddr start_pa;
     ram_addr_t size;
     void *host_va;
+    int add;
     int rom;
     const char *name;
+
+    QLIST_ENTRY(whpx_mem_region) list_links;
 };
+
+QLIST_HEAD(whpx_mem_region_list, whpx_mem_region);
 
 /* Partially copied from i386. */
 struct whpx_state {
@@ -33,13 +39,8 @@ struct whpx_state {
     bool step_pending;
     bool partition_set_up;
 
-    /* XXX TODO: For now, just one non-MMIO region is expected before the
-     * gicd region is seen. Either fix the BIOS ROM region so it's handled
-     * correctly by making it MMIO, or fully implement the ability to have
-     * an arbitrary number of memory regions before the gicd region.
-     */
-    struct whpx_mem_region initial_region;
-    bool initial_region_set;
+    struct whpx_mem_region_list early_mem_regions;
+    struct whpx_mem_region *last;
 };
 
 extern struct whpx_state whpx_global;

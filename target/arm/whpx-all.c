@@ -1539,12 +1539,14 @@ static void whpx_process_gic_dist_section(MemoryRegionSection *section, int add)
 
     /*
      * Handle any memory regions that were initialized before the gicd region.
+     *
+     * TODO: For now, we're not freeing the list, since it might be useful
+     * for later debugging.
      */
-    /* XXX TODO: Support multiple initial memory regions. */
-    if (whpx->initial_region_set) {
-        struct whpx_mem_region *region = &whpx->initial_region;
+    struct whpx_mem_region *region;
+    QLIST_FOREACH(region, &whpx->early_mem_regions, list_links) {
         whpx_update_mapping(region->start_pa, region->size, region->host_va,
-                            true, region->rom, region->name);
+                            region->add, region->rom, region->name);
     }
 
     whpx->partition_set_up = true;
@@ -1605,18 +1607,24 @@ static void whpx_process_section(MemoryRegionSection *section, int add)
             + section->offset_within_region + delta;
 
     if (!whpx->partition_set_up) {
-        struct whpx_mem_region *region = &whpx->initial_region;
+        struct whpx_mem_region *region =
+            g_malloc0(sizeof(struct whpx_mem_region));
 
-        /* XXX TODO: Only one initial region supported right now. */
-        assert(!whpx->initial_region_set);
-        /* XXX TODO: Support remove if needed. */
         assert(add);
         region->start_pa = start_pa;
         region->size = size;
         region->host_va = (void *)(uintptr_t) host_va;
+        region->add = add;
         region->rom = memory_region_is_rom(mr);
         region->name = mr->name;
-        whpx->initial_region_set = true;
+
+        if (whpx->last != NULL) {
+            QLIST_INSERT_AFTER(whpx->last, region, list_links);
+        } else {
+            QLIST_INSERT_HEAD(&whpx->early_mem_regions, region, list_links);
+        }
+        whpx->last = region;
+
         return;
     }
 
@@ -1765,6 +1773,8 @@ static int whpx_accel_init(MachineState *ms)
     whpx = &whpx_global;
 
     printf("XXX Accelerator is being initialized\n");
+
+    QLIST_INIT(&whpx->early_mem_regions);
 
     if (!init_whp_dispatch()) {
         ret = -ENOSYS;
