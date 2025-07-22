@@ -13,6 +13,7 @@
 #include "cpu.h"
 #include "system/address-spaces.h"
 #include "qemu/accel.h"
+#include "qemu/atomic.h"
 #include "system/whpx.h"
 #include "system/runstate.h"
 #include "qemu/error-report.h"
@@ -1510,7 +1511,7 @@ static void whpx_process_gic_dist_section(MemoryRegionSection *section, int add)
 
     assert(!strcmp(mr->name, "gicv3_dist"));
     assert(add);
-    assert(!whpx->partition_set_up);
+    assert(!qatomic_read(&whpx->atomic_partition_set_up));
 
     /* XXX logging */
     printf("Processing gicdist section\n");
@@ -1569,7 +1570,7 @@ static void whpx_process_gic_dist_section(MemoryRegionSection *section, int add)
                             region->add, region->rom, region->name);
     }
 
-    whpx->partition_set_up = true;
+    qatomic_set(&whpx->atomic_partition_set_up, true);
 }
 
 /* Same as i386 */
@@ -1626,7 +1627,7 @@ static void whpx_process_section(MemoryRegionSection *section, int add)
     host_va = (uintptr_t)memory_region_get_ram_ptr(mr)
             + section->offset_within_region + delta;
 
-    if (!whpx->partition_set_up) {
+    if (!qatomic_read(&whpx->atomic_partition_set_up)) {
         struct whpx_mem_region *region =
             g_malloc0(sizeof(struct whpx_mem_region));
 
@@ -1924,7 +1925,7 @@ void *whpx_cpu_thread_fn(void *arg)
     printf("CPU %d waiting for partition to be set up\n", cpu->cpu_index);
 
     /* TODO: Comment for why we need to do this. */
-    while (!whpx->partition_set_up) {
+    while (!qatomic_read(&whpx->atomic_partition_set_up)) {
         while (cpu_thread_is_idle(cpu)) {
             qemu_cond_wait_bql(cpu->halt_cond);
         }
