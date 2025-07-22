@@ -104,5 +104,6 @@ struct WHPDispatch {
 extern struct WHPDispatch whp_dispatch;
 
 void whpx_arm_set_irq(uint32_t vector, uint64_t destination, int level);
+void *whpx_cpu_thread_fn(void *arg);
 
 #endif /* TARGET_ARM_WHPX_INTERNAL_H */

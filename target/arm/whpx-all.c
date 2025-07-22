@@ -17,6 +17,7 @@
 #include "system/runstate.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
+#include "qemu/guest-random.h"
 #include "hw/boards.h"
 #include "whpx-arm.h"
 #include "migration/blocker.h"
@@ -1051,6 +1052,8 @@ int whpx_init_vcpu(CPUState *cpu)
     if (FAILED(hr)) {
         error_report("WHPX: Failed to create a virtual processor,"
                      " hr=%08lx", hr);
+        /* XXX get a crash */
+        *(volatile int *) 0 = 0;
         ret = -EINVAL;
         goto error;
     }
@@ -1509,6 +1512,9 @@ static void whpx_process_gic_dist_section(MemoryRegionSection *section, int add)
     assert(add);
     assert(!whpx->partition_set_up);
 
+    /* XXX logging */
+    printf("Processing gicdist section\n");
+
     start_pa = section->offset_within_address_space;
 
     /*
@@ -1893,4 +1899,66 @@ int whpx_arm_get_max_ipa_bit_size(void)
 {
     /* TODO: Implement this properly */
     return 40;
+}
+
+void *whpx_cpu_thread_fn(void *arg)
+{
+    CPUState *cpu = arg;
+    struct whpx_state *whpx = &whpx_global;
+    bool vcpu_initialized = false;
+    int r;
+
+    rcu_register_thread();
+
+    bql_lock();
+    qemu_thread_get_self(cpu->thread);
+    cpu->thread_id = qemu_get_thread_id();
+    current_cpu = cpu;
+
+
+    /* signal CPU creation */
+    cpu_thread_signal_created(cpu);
+    qemu_guest_random_seed_thread_part2(cpu->random_seed);
+
+    /* TODO: Comment for why we need to do this. */
+    while (!whpx->partition_set_up) {
+        while (cpu_thread_is_idle(cpu)) {
+            qemu_cond_wait_bql(cpu->halt_cond);
+        }
+        qemu_wait_io_event_common(cpu);
+        if (cpu->unplug || !cpu_can_run(cpu)) {
+            goto done;
+        }
+    }
+
+    r = whpx_init_vcpu(cpu);
+    /* XXX error - use real logging infrastructure for this */
+    fprintf(stderr, "whpx_init_vcpu failed: %s\n", strerror(-r));
+    /* TODO: Not able to return an error for this setup failure. */
+    assert(r >= 0);
+    vcpu_initialized = true;
+
+    do {
+
+        if (cpu_can_run(cpu)) {
+            r = whpx_vcpu_exec(cpu);
+            if (r == EXCP_DEBUG) {
+                cpu_handle_guest_debug(cpu);
+            }
+        }
+
+        while (cpu_thread_is_idle(cpu)) {
+            qemu_cond_wait_bql(cpu->halt_cond);
+        }
+        qemu_wait_io_event_common(cpu);
+    } while (!cpu->unplug || cpu_can_run(cpu));
+
+done:
+    if (vcpu_initialized) {
+        whpx_destroy_vcpu(cpu);
+    }
+    cpu_thread_signal_destroyed(cpu);
+    bql_unlock();
+    rcu_unregister_thread();
+    return NULL;
 }
