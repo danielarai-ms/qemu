@@ -37,7 +37,8 @@ struct whpx_state {
     WHV_PARTITION_HANDLE partition;
     int32_t running_cpus;
     bool step_pending;
-    bool partition_set_up;
+    /* XXX If this works, need to replace with atomic or something locked */
+    volatile bool partition_set_up;
 
     struct whpx_mem_region_list early_mem_regions;
     struct whpx_mem_region *last;

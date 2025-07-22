@@ -1920,16 +1920,24 @@ void *whpx_cpu_thread_fn(void *arg)
     cpu_thread_signal_created(cpu);
     qemu_guest_random_seed_thread_part2(cpu->random_seed);
 
+    /* XXX logging */
+    printf("CPU %d waiting for partition to be set up\n", cpu->cpu_index);
+
     /* TODO: Comment for why we need to do this. */
     while (!whpx->partition_set_up) {
         while (cpu_thread_is_idle(cpu)) {
             qemu_cond_wait_bql(cpu->halt_cond);
         }
-        qemu_wait_io_event_common(cpu);
-        if (cpu->unplug || !cpu_can_run(cpu)) {
+        //qemu_wait_io_event_common(cpu);
+        if (cpu->unplug && !cpu_can_run(cpu)) {
+            /* XXX logging */
+            printf("CPU %d terminated while waiting for partition to be set up\n", cpu->cpu_index);
             goto done;
         }
     }
+
+    /* XXX logging */
+    printf("CPU %d initializing VP in hypervisor\n", cpu->cpu_index);
 
     r = whpx_init_vcpu(cpu);
     /* XXX error - use real logging infrastructure for this */
@@ -1938,7 +1946,10 @@ void *whpx_cpu_thread_fn(void *arg)
     assert(r >= 0);
     vcpu_initialized = true;
 
+    /* XXX logging */
+    printf("CPU %d starting real event loop\n", cpu->cpu_index);
     do {
+        qemu_wait_io_event_common(cpu);
 
         if (cpu_can_run(cpu)) {
             r = whpx_vcpu_exec(cpu);
@@ -1950,7 +1961,6 @@ void *whpx_cpu_thread_fn(void *arg)
         while (cpu_thread_is_idle(cpu)) {
             qemu_cond_wait_bql(cpu->halt_cond);
         }
-        qemu_wait_io_event_common(cpu);
     } while (!cpu->unplug || cpu_can_run(cpu));
 
 done:
