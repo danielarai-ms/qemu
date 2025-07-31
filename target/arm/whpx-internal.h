@@ -43,6 +43,9 @@ struct whpx_state {
 
     struct whpx_mem_region_list early_mem_regions;
     struct whpx_mem_region *last;
+
+    bool sve_len_initialized;
+    uint32_t sve_len;
 };
 
 extern struct whpx_state whpx_global;

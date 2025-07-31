@@ -67,8 +67,8 @@ void arm_cpu_sve_finalize(ARMCPU *cpu, Error **errp)
     /*
      * CPU models specify a set of supported vector lengths which are
      * enabled by default.  Attempting to enable any vector length not set
-     * in the supported bitmap results in an error.  When KVM is enabled we
-     * fetch the supported bitmap from the host.
+     * in the supported bitmap results in an error.  When KVM or WHPX is
+     * enabled we fetch the supported bitmap from the host.
      */
     if (kvm_enabled()) {
         if (kvm_arm_sve_supported()) {
@@ -78,6 +78,9 @@ void arm_cpu_sve_finalize(ARMCPU *cpu, Error **errp)
             assert(!cpu_isar_feature(aa64_sve, cpu));
             vq_supported = 0;
         }
+    } else if (whpx_enabled()) {
+        cpu->sve_vq.supported = whpx_arm_sve_get_vls();
+        vq_supported = cpu->sve_vq.supported;
     } else {
         vq_supported = cpu->sve_vq.supported;
     }

@@ -27,10 +27,16 @@ void whpx_arm_set_cpu_features_from_host(ARMCPU *cpu);
 #ifdef CONFIG_WHPX
 
 int whpx_arm_get_max_ipa_bit_size(void);
+uint32_t whpx_arm_sve_get_vls(void);
 
 #else
 
 static inline int whpx_arm_get_max_ipa_bit_size(void)
+{
+    g_assert_not_reached();
+}
+
+static inline uint32_t whpx_arm_sve_get_vls(void)
 {
     g_assert_not_reached();
 }

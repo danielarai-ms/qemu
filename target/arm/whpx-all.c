@@ -565,7 +565,7 @@ static bool whpx_arm_get_cpu_features_from_host(ARMCPU *cpu)
 
     isar->id_aa64pfr0 = (cur_isar_value++)->Reg64;
     /* TODO: Implement VSE support. For now, hide it. */
-    isar->id_aa64pfr0 &= ~(0x0000000f00000000ll);
+    //isar->id_aa64pfr0 &= ~(0x0000000f00000000ll);
 
     isar->id_aa64pfr1 = (cur_isar_value++)->Reg64;
 
@@ -1972,4 +1972,52 @@ done:
     bql_unlock();
     rcu_unregister_thread();
     return NULL;
+}
+
+static void whpx_arm_get_host_sve_length(void)
+{
+    HRESULT hr;
+    WHV_CAPABILITY capability;
+    uint32_t capability_size_out;
+    WHV_PARTITION_HANDLE *partition;
+    uint32_t vector_len;
+    struct whpx_state *whpx = &whpx_global;
+
+    assert(!whpx->sve_len_initialized);
+    partition = whpx_create_temporary_partition();
+    assert(partition != NULL);
+
+    hr = whp_dispatch.WHvGetCapability(WHvCapabilityCodeMaxSveVectorLength,
+                                       &capability,
+                                       sizeof (WHV_CAPABILITY),
+                                       &capability_size_out);
+    /* TODO: Handle this error somehow */
+    assert(!FAILED(hr));
+    assert(sizeof (uint32_t) == capability_size_out);
+
+    vector_len = capability.MaxSveVectorLength;
+    if (vector_len > ARM_MAX_VQ) {
+        warn_report("WHP supports vector lengths larger than "
+                    "QEMU can enable");
+        vector_len = ARM_MAX_VQ;
+    }
+    whpx->sve_len_initialized = true;
+    whpx->sve_len = MAKE_64BIT_MASK(0, vector_len);
+    /* TODO: Need to synchronize SVE registers. How to do this? */
+    g_assert_not_reached();
+}
+
+uint32_t whpx_arm_sve_get_vls(void)
+{
+    struct whpx_state *whpx = &whpx_global;
+
+    /* TODO: Also get the SVE length during ID register retrieval so we
+     * don't need to construct another temporary partition in the common
+     * case.
+     */
+    if (!whpx->sve_len_initialized) {
+        whpx_arm_get_host_sve_length();
+    }
+    assert(whpx->sve_len_initialized);
+    return whpx->sve_len;
 }
